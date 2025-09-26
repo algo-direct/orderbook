@@ -1,0 +1,24 @@
+
+#include "order_book.hpp"
+ 
+int main()
+{
+    std::cout << "------------------ start" << std::endl;
+    OrderBookSnapshot orderBookSnapshot;
+    orderBookSnapshot.sequence = 16;
+    orderBookSnapshot.bids.reserve(4);
+    orderBookSnapshot.bids.push_back({.price = 3988.62, .size = 8});
+    orderBookSnapshot.bids.push_back({.price = 3988.61, .size = 32});
+    orderBookSnapshot.bids.push_back({.price = 3988.60, .size = 47});
+    orderBookSnapshot.bids.push_back({.price = 3988.59, .size = 3});
+
+    orderBookSnapshot.asks.reserve(4);
+    orderBookSnapshot.asks.push_back({.price = 3988.48, .size = 10});
+    orderBookSnapshot.asks.push_back({.price = 3988.49, .size = 100});
+    orderBookSnapshot.asks.push_back({.price = 3988.50, .size = 15});
+    orderBookSnapshot.asks.push_back({.price = 3988.51, .size = 56});
+
+    OrderBook orderBook(orderBookSnapshot);
+    std::cout << "------------------ end" << std::endl;
+    return 0;
+}
