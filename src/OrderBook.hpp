@@ -8,35 +8,9 @@
 #include <queue>
 #include <vector>
 
+#include "common_header.h"
 #include "logging.h"
 #include "utils.h"
-
-struct Level {
-  PriceType price{0};
-  SizeType size{0};
-  SequenceType sequence{0};
-};
-
-using Levels = std::vector<Level>;
-using AskLevels = std::map<PriceType, Level, PriceCompareLessThan>;
-using BidLevels = std::map<PriceType, Level, PriceCompareGreaterThan>;
-
-enum struct BidOrAsk { BID, ASK };
-
-struct OrderBookSnapshot {
-  SequenceType sequence;
-  TimePoint timestamp;
-  Levels bids;
-  Levels asks;
-};
-
-struct IncrementalUpdate {
-  SequenceType sequenceStart{0};
-  SequenceType sequenceEnd{0};
-  TimePoint timestamp;
-  Levels bids;
-  Levels asks;
-};
 
 class OrderBook {
   SequenceType sequence{0};

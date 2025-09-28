@@ -15,6 +15,10 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(nlohmann_json)
 
+find_package(Boost REQUIRED
+    COMPONENTS program_options
+)
+
 add_subdirectory(src)
 
 include(CTest)

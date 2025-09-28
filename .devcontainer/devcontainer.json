@@ -5,6 +5,9 @@
 	"build": {
 		"dockerfile": "Dockerfile"
 	},
+	"containerEnv": {
+		"TZ": "America/New_York"
+	},
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
@@ -13,7 +16,7 @@
 	// "forwardPorts": [],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "sudo apt-get update && sudo apt-get install -y python3-aiohttp ; sudo apt-get install -y libboost-all-dev;     sudo apt-get install -y clang-format",
+	"postCreateCommand": "sudo apt-get update && sudo apt-get install -y python3-aiohttp libboost-all-dev clang-format",
 	
 	// Configure tool-specific properties.
 	"customizations": {

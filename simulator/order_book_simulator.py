@@ -1,5 +1,11 @@
 #!/usr/bin/python3
 
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
 import aiohttp
 from aiohttp import web, WSCloseCode
 import asyncio
@@ -8,7 +14,11 @@ import json
 import random
 import argparse
 
+
 import utils
+
+aiohttp_logger = logging.getLogger("aiohttp")
+aiohttp_logger.setLevel(logging.INFO)
 
 def getMillisecondsSinceEpoch():
     return int(round(time.time() * 1000))
@@ -177,16 +187,6 @@ class FakeOrderBook:
         for update in updatedAsks:
             update.append(str(randomSequences.pop(0)))
 
-        # print(f"nextBestBid: {nextBestBid}")
-        # print(f"nextBestAsk: {nextBestAsk}")
-        # print(f"lastBestBid: {lastBestBid}")
-        # print(f"lastBestAsk: {lastBestAsk}")
-        # print(f"removedAsks: {removedAsks}")
-        # print(f"removedBids: {removedBids}")
-        # print(f"updatedBids: {updatedBids}")
-        # print(f"updatedAsks: {updatedAsks}")
-        # print(f"len(self.bids): {len(self.bids)}")
-        # print(f"len(self.asks): {len(self.asks)}")
         self.timestamp = getMillisecondsSinceEpoch()
         orderbookIncrement = {
             "topic": "/market/level2:BTC-USDT",
@@ -212,6 +212,17 @@ class OrderBookSimulator:
         self.fakeOrderBook = FakeOrderBook()
         self.fakeOrderBook.generateFirstRandomSpanshot()
 
+    async def wsSenderLoop(self):
+        while True:
+            logging.debug("running..")
+            await asyncio.sleep(1)
+            try:
+                delta = self.fakeOrderBook.updateOrderBookUsingNextLTP()
+                if self.ws:                    
+                    await self.ws.send_str(json.dumps(delta))
+            finally:
+                pass
+
     async def snapshotHandler(self, request):
         return web.json_response(self.fakeOrderBook.getSpanshot())
     
@@ -221,7 +232,13 @@ class OrderBookSimulator:
     async def websocketHandler(self, request):
         ws = web.WebSocketResponse()
         await ws.prepare(request)
+        if self.ws:
+            try:
+                await ws.close(code=1000, message='Goodbye!')
+            finally:
+                self.ws = None
 
+        self.ws = ws
         async for msg in ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
                 if msg.data == 'close':
@@ -230,7 +247,7 @@ class OrderBookSimulator:
                     await ws.send_str('some websocket message payload')
             elif msg.type == aiohttp.WSMsgType.ERROR:
                 print('ws connection closed with exception %s' % ws.exception())
-
+        self.ws = None
         return ws
 
     def createRunner(self):
@@ -246,7 +263,11 @@ class OrderBookSimulator:
         runner = self.createRunner()
         await runner.setup()
         site = web.TCPSite(runner, host, port)
-        await site.start()
+        print("before wsSenderLoop")
+        await asyncio.gather(
+            self.wsSenderLoop(), 
+            site.start())
+        print("after start")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OrderBookSimulator")

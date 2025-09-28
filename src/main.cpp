@@ -1,22 +1,50 @@
-
+#include <memory>
 #include <ranges>
+#include <string>
 
+#include <boost/program_options.hpp>
+
+#include "AsyncIOHeaders.h"
 #include "OrderBook.hpp"
+#include "OrderBookWebClient.h"
 #include "OrderBookWsClient.h"
 
-int main() {
+namespace po = boost::program_options;
+
+int main(int argc, char* argv[]) {
+  po::options_description desc("Allowed options");
+  desc.add_options()("help", "produce help message")(
+      "host", po::value<std::string>()->default_value("127.0.0.1"),
+      "Hostname of OrderBook Feed Server or Simulation")  //
+      ("port", po::value<std::string>()->default_value("40000"),
+       "Port nuumber of OrderBook Feed Server or Simulation");
+
+  po::variables_map vm;
+  po::store(po::parse_command_line(argc, argv, desc), vm);
+  po::notify(vm);
+
+  if (vm.count("help")) {
+    std::cout << desc << std::endl;
+    return 1;
+  }
+  asio::io_context ioc;
+
   std::cout << "------------------ start" << std::endl;
-  OrderBookWsClient orderBookWsClient("127.0.0.1", "40000");
-  std::cout << "------------------ start" << std::endl;
-  std::cout << "------------------ start" << std::endl;
+  const auto httpVersion = 11;  // HTTP 1.1
+  OrderBookWsClient orderBookWsClient(ioc, vm["host"].as<std::string>(),
+                                      vm["post"].as<std::string>(), "/ws",
+                                      httpVersion);
+  // OrderBookWebClient orderBookWebClient(ioc, vm["host"].as<std::string>(),
+  //                                     vm["post"].as<std::string>(), "/ws",
+  //                                     httpVersion);
   OrderBook orderBook;
   OrderBookSnapshot orderBookSnapshot;
-  orderBookWsClient.getSnapshot(orderBookSnapshot);
+  // orderBookWsClient.getSnapshot(orderBookSnapshot);
   orderBook.applySnapshot(orderBookSnapshot);
   orderBook.printTop10();
   for (int _ : std::views::iota(0, 10000)) {
-    IncrementalUpdate incrementalUpdate;
-    orderBookWsClient.getIncrementalUpdate(incrementalUpdate);
+    // IncrementalUpdate incrementalUpdate;
+    // orderBookWsClient.getIncrementalUpdate(incrementalUpdate);
     // orderBook.printTop10();
   }
 
@@ -50,6 +78,8 @@ int main() {
   // incrementalUpdate.bids.push_back({.price = 3988.50, .size = 44, .sequence =
   // 18}); orderBook.applyIncrementalUpdate(std::move(incrementalUpdate));
   // orderBook.printTop10();
+  ioc.run();
   std::cout << "------------------ end" << std::endl;
+
   return 0;
 }

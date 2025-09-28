@@ -1,130 +1,156 @@
 #include "OrderBookWsClient.h"
 
-#include <boost/asio/connect.hpp>
-#include <boost/asio/ip/tcp.hpp>
-#include <boost/beast/core.hpp>
-#include <boost/beast/http.hpp>
-#include <boost/beast/version.hpp>
 #include <cstdlib>
 #include <format>
 #include <iostream>
-#include <nlohmann/json.hpp>
 #include <string>
 
+#include "AsyncIOHeaders.h"
 #include "OrderBook.hpp"
+#include "common_header.h"
+#include "json_utils.h"
 #include "logging.h"
 
-namespace beast = boost::beast;  // from <boost/beast.hpp>
-namespace http = beast::http;    // from <boost/beast/http.hpp>
-namespace net = boost::asio;     // from <boost/asio.hpp>
-using tcp = net::ip::tcp;        // from <boost/asio/ip/tcp.hpp>
-
-OrderBookWsClient::OrderBookWsClient(std::string_view host,
-                                     std::string_view port)
-    : m_host(host), m_port(port) {}
-
-void OrderBookWsClient::getSnapshot(OrderBookSnapshot &orderBookSnapshot) {
-  net::io_context ioc;
-  tcp::resolver resolver(ioc);
-  beast::tcp_stream stream(ioc);
-  auto const results = resolver.resolve(m_host, m_port);
-  stream.connect(results);
-
-  auto target = "/snapshot";
-  auto version = 11;
-  http::request<http::string_body> req{http::verb::get, target, version};
-  req.set(http::field::host, m_host);
-  req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
-
-  http::write(stream, req);
-
+class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
+  tcp::resolver m_resolver;
+  websocket::stream<beast::tcp_stream> m_tcpStream;
   beast::flat_buffer buffer;
-  http::response<http::string_body> httpResult;
-  http::read(stream, buffer, httpResult);
+  std::string m_host;
+  std::string m_text;
 
-  LOG_DEBUG("status: " << httpResult.result_int() << ", content_type: "
-                       << (httpResult[http::field::content_type])
-                       << ", content_length: "
-                       << (httpResult[http::field::content_length]));
+ public:
+  // Resolver and socket require an io_context
+  explicit WebSocketClient(asio::io_context &ioc)
+      : m_resolver(asio::make_strand(ioc)),
+        m_tcpStream(asio::make_strand(ioc)) {}
 
-  LOG_DEBUG(httpResult);
+  // Start the asynchronous operation
+  void run(char const *host, char const *port, char const *text) {
+    // Save these for later
+    host = host;
+    m_text = text;
 
-  if (httpResult.result_int() != 200) {
-    throw std::runtime_error("Unable to get snapshot");
+    // Look up the domain name
+    m_resolver.async_resolve(
+        host, port,
+        beast::bind_front_handler(&WebSocketClient::onResolve,
+                                  shared_from_this()));
   }
-  stream.socket().shutdown(tcp::socket::shutdown_both);
-  jsonToOrderBookSnapshot(httpResult.body(), orderBookSnapshot);
-}
 
-void populatePriceLevels(Levels &levels, const nlohmann::json &jsonLevels,
-                         bool withSequence = false) {
-  levels.reserve(std::size(jsonLevels));
-  for (const auto &jsonLevel : jsonLevels) {
-    const auto &bidSizeAndSequence = jsonLevel.get<std::vector<std::string>>();
-    if (withSequence) {
-      if (size(bidSizeAndSequence) != 3) {
-        auto error = std::format(
-            "Expect 3 elements in price level json array, but found {}, input "
-            "json array '{}'",
-            std::size(bidSizeAndSequence), jsonLevel.dump());
-        throw std::runtime_error(error);
-      }
-    } else {
-      if (size(bidSizeAndSequence) != 2) {
-        auto error = std::format(
-            "Expect 2 elements in price level json array, but found {}, input "
-            "json array '{}'",
-            std::size(bidSizeAndSequence), jsonLevel.dump());
-        throw std::runtime_error(error);
-      }
-    }
-    if (bidSizeAndSequence[0].empty()) {
-      auto error = std::format("Bid/Ask string is empty, input json array '{}'",
-                               jsonLevel.dump());
-      throw std::runtime_error(error);
-    }
-    if (bidSizeAndSequence[1].empty()) {
-      auto error = std::format("Size string is empty, input json array '{}'",
-                               jsonLevel.dump());
-      throw std::runtime_error(error);
-    }
-    if (bidSizeAndSequence[2].empty()) {
-      auto error = std::format(
-          "Sequence string is empty, input json array '{}'", jsonLevel.dump());
-      throw std::runtime_error(error);
-    }
-    levels.push_back({.price = std::stod(bidSizeAndSequence[0]),
-                      .size = std::stod(bidSizeAndSequence[1])});
-
-    if (withSequence) {
-      levels.back().sequence = std::stoull(bidSizeAndSequence[2]);
+  void onResolve(beast::error_code ec, tcp::resolver::results_type results) {
+    if (ec) {
+      LOG_ERROR("resolve failed: " << ec.message());
+      return;
     }
 
-    if (sizeCompareLessThan(levels.back().size, 0)) {
-      auto error = std::format("Size {} is less than 0", bidSizeAndSequence[0]);
-      throw std::runtime_error(error);
-    }
-    if (priceCompareLessThan(levels.back().price, 0)) {
-      auto error =
-          std::format("Price {} is less than 0", bidSizeAndSequence[0]);
-      throw std::runtime_error(error);
-    }
+    // Set the timeout for the operation
+    beast::get_lowest_layer(m_tcpStream)
+        .expires_after(std::chrono::seconds(30));
+
+    // Make the connection on the IP address we get from a lookup
+    beast::get_lowest_layer(m_tcpStream)
+        .async_connect(results,
+                       beast::bind_front_handler(&WebSocketClient::onConnect,
+                                                 shared_from_this()));
   }
-}
 
-void OrderBookWsClient::jsonToOrderBookSnapshot(
-    std::string_view json, OrderBookSnapshot &orderBookSnapshot) {
-  nlohmann::json jsonSnapshot = nlohmann::json::parse(json)["data"];
-  orderBookSnapshot.timestamp = TimePoint(jsonSnapshot["time"].get<long>());
-  orderBookSnapshot.sequence =
-      std::stoull(jsonSnapshot["sequence"].get<std::string>());
-  const auto &jsonBids =
-      jsonSnapshot["bids"].template get<std::vector<nlohmann::json>>();
-  populatePriceLevels(orderBookSnapshot.bids, jsonBids);
-  const auto &jsonAsks =
-      jsonSnapshot["asks"].template get<std::vector<nlohmann::json>>();
-  populatePriceLevels(orderBookSnapshot.asks, jsonAsks);
-}
+  void onConnect(beast::error_code ec,
+                 tcp::resolver::results_type::endpoint_type ep) {
+    if (ec) {
+      LOG_ERROR("connect failed: " << ec.message());
+      return;
+    }
+
+    // Turn off the timeout on the tcp_stream, because
+    // the websocket stream has its own timeout system.
+    beast::get_lowest_layer(m_tcpStream).expires_never();
+
+    // Set suggested timeout settings for the websocket
+    m_tcpStream.set_option(
+        websocket::stream_base::timeout::suggested(beast::role_type::client));
+
+    // Set a decorator to change the User-Agent of the handshake
+    m_tcpStream.set_option(
+        websocket::stream_base::decorator([](websocket::request_type &req) {
+          req.set(http::field::user_agent,
+                  std::string(BOOST_BEAST_VERSION_STRING) +
+                      " websocket-client-async");
+        }));
+
+    // Update the host_ string. This will provide the value of the
+    // Host HTTP header during the WebSocket handshake.
+    // See https://tools.ietf.org/html/rfc7230#section-5.4
+    m_host += ':' + std::to_string(ep.port());
+
+    // Perform the websocket handshake
+    m_tcpStream.async_handshake(
+        m_host, "/",
+        beast::bind_front_handler(&WebSocketClient::onHandshake,
+                                  shared_from_this()));
+  }
+
+  void onHandshake(beast::error_code ec) {
+    if (ec) {
+      LOG_ERROR("Web socket handshake failed: " << ec.message());
+      return;
+    }
+
+    // Send the message
+    m_tcpStream.async_write(asio::buffer(m_text),
+                            beast::bind_front_handler(&WebSocketClient::onWrite,
+                                                      shared_from_this()));
+  }
+
+  void onWrite(beast::error_code ec, std::size_t bytes_transferred) {
+    boost::ignore_unused(bytes_transferred);
+
+    if (ec) {
+      LOG_ERROR("writing data on websocket failed: " << ec.message());
+      return;
+    }
+
+    // Read a message into our buffer
+    m_tcpStream.async_read(buffer,
+                           beast::bind_front_handler(&WebSocketClient::onRead,
+                                                     shared_from_this()));
+  }
+
+  void onRead(beast::error_code ec, std::size_t bytes_transferred) {
+    boost::ignore_unused(bytes_transferred);
+
+    if (ec) {
+      LOG_ERROR("reading data from websocket failed: " << ec.message());
+      return;
+    }
+
+    // Close the WebSocket connection
+    m_tcpStream.async_close(websocket::close_code::normal,
+                            beast::bind_front_handler(&WebSocketClient::onClose,
+                                                      shared_from_this()));
+  }
+
+  void onClose(beast::error_code ec) {
+    if (ec) {
+      LOG_ERROR("Closing websocket connection failed: " << ec.message());
+      return;
+    }
+
+    // If we get here then the connection is closed gracefully
+
+    // The make_printable() function helps print a ConstBufferSequence
+    std::cout << beast::make_printable(buffer.data()) << std::endl;
+  }
+};
+
+OrderBookWsClient::OrderBookWsClient(boost::asio::io_context &ioc,
+                                     std::string_view host,
+                                     std::string_view port,
+                                     std::string_view uri, int httpVersion)
+    : m_host{host},
+      m_port{port},
+      m_uri{uri},
+      m_httpVersion{httpVersion},
+      m_webSocketClient{std::make_unique<WebSocketClient>(ioc)} {}
 
 void OrderBookWsClient::jsonToIncrementalUpdate(
     std::string_view json, IncrementalUpdate &incrementalUpdate) {
@@ -138,44 +164,12 @@ void OrderBookWsClient::jsonToIncrementalUpdate(
   bool withSequence = true;
   const auto &jsonBids = jsonIncrementalUpdate["changes"]["bids"]
                              .template get<std::vector<nlohmann::json>>();
-  populatePriceLevels(incrementalUpdate.bids, jsonBids, withSequence);
+  JsonUtils::populatePriceLevels(incrementalUpdate.bids, jsonBids,
+                                 withSequence);
   const auto &jsonAsks = jsonIncrementalUpdate["changes"]["asks"]
                              .template get<std::vector<nlohmann::json>>();
-  populatePriceLevels(incrementalUpdate.asks, jsonAsks, withSequence);
+  JsonUtils::populatePriceLevels(incrementalUpdate.asks, jsonAsks,
+                                 withSequence);
 }
 
-void OrderBookWsClient::getIncrementalUpdate(
-    IncrementalUpdate &incrementalUpdate) {
-  net::io_context ioc;
-  tcp::resolver resolver(ioc);
-  beast::tcp_stream stream(ioc);
-  // auto loopback = "127.0.0.1";
-  auto const results = resolver.resolve(m_host, m_port);
-  stream.connect(results);
-
-  auto target = "/generateIncrement";
-  auto version = 11;
-  http::request<http::string_body> req{http::verb::get, target, version};
-  req.set(http::field::host, m_host);
-  req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
-
-  http::write(stream, req);
-
-  beast::flat_buffer buffer;
-  http::response<http::string_body> httpResult;
-  http::read(stream, buffer, httpResult);
-
-  LOG_DEBUG("status: " << httpResult.result_int() << ", content_type: "
-                       << (httpResult[http::field::content_type])
-                       << ", content_length: "
-                       << (httpResult[http::field::content_length]));
-
-  LOG_DEBUG(httpResult);
-
-  if (httpResult.result_int() != 200) {
-    throw std::runtime_error("Unable to get snapshot");
-  }
-  stream.socket().shutdown(tcp::socket::shutdown_both);
-
-  jsonToIncrementalUpdate(httpResult.body(), incrementalUpdate);
-}
+void OrderBookWsClient::sendSubscriptionRequest() {}
