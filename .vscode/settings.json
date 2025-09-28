@@ -73,6 +73,7 @@
         "complex": "cpp",
         "list": "cpp",
         "future": "cpp",
-        "typeindex": "cpp"
+        "typeindex": "cpp",
+        "set": "cpp"
     }
 }

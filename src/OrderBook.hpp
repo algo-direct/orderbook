@@ -20,7 +20,7 @@ class OrderBook {
   std::queue<IncrementalUpdate> pendingIncrementalUpdates;
 
  public:
-  void applySnapshot(OrderBookSnapshot &orderBookSnapshot) {
+  void applySnapshot(OrderBookSnapshot &&orderBookSnapshot) {
     lastUpdateTimestamp = orderBookSnapshot.timestamp;
     sequence = orderBookSnapshot.sequence;
     for (auto &level : orderBookSnapshot.bids) {

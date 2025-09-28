@@ -1,13 +1,11 @@
+#include <boost/program_options.hpp>
+#include <functional>
+#include <iostream>
 #include <memory>
 #include <ranges>
 #include <string>
 
-#include <boost/program_options.hpp>
-
-#include "AsyncIOHeaders.h"
-#include "OrderBook.hpp"
-#include "OrderBookWebClient.h"
-#include "OrderBookWsClient.h"
+#include "OrderBookNetworkConnector.h"
 
 namespace po = boost::program_options;
 
@@ -27,26 +25,45 @@ int main(int argc, char* argv[]) {
     std::cout << desc << std::endl;
     return 1;
   }
-  asio::io_context ioc;
 
-  std::cout << "------------------ start" << std::endl;
-  const auto httpVersion = 11;  // HTTP 1.1
-  OrderBookWsClient orderBookWsClient(ioc, vm["host"].as<std::string>(),
-                                      vm["post"].as<std::string>(), "/ws",
-                                      httpVersion);
-  // OrderBookWebClient orderBookWebClient(ioc, vm["host"].as<std::string>(),
-  //                                     vm["post"].as<std::string>(), "/ws",
+  OrderBookNetworkConnector orderBookNetworkConnector(
+      vm["host"].as<std::string>(), vm["port"].as<std::string>());
+  orderBookNetworkConnector.run();
+
+  // asio::io_context ioc;
+
+  // std::cout << "------------------ start" << std::endl;
+  // const auto httpVersion = 11;  // HTTP 1.1
+  // auto onIncrementalUpdate =
+  //     [&orderBook](IncrementalUpdate&& incrementalUpdate) {
+  //       if (!orderBook) {
+  //         return;
+  //       }
+  //       orderBook->applyIncrementalUpdate(std::move(incrementalUpdate));
+  //     };
+  // auto disconnectCallback = [&orderBook]() {
+  //   if (!orderBook) {
+  //     return;
+  //   }
+  // };
+  // OrderBookWsClient orderBookWsClient(onIncrementalUpdate,
+  // disconnectCallback,
+  //                                     ioc, vm["host"].as<std::string>(),
+  //                                     vm["port"].as<std::string>(), "/ws",
   //                                     httpVersion);
-  OrderBook orderBook;
-  OrderBookSnapshot orderBookSnapshot;
-  // orderBookWsClient.getSnapshot(orderBookSnapshot);
-  orderBook.applySnapshot(orderBookSnapshot);
-  orderBook.printTop10();
-  for (int _ : std::views::iota(0, 10000)) {
-    // IncrementalUpdate incrementalUpdate;
-    // orderBookWsClient.getIncrementalUpdate(incrementalUpdate);
-    // orderBook.printTop10();
-  }
+  // OrderBookWebClient orderBookWebClient(ioc, vm["host"].as<std::string>(),
+  //                                       vm["port"].as<std::string>(), "/ws",
+  //                                       httpVersion);
+
+  // OrderBookSnapshot orderBookSnapshot;
+  // // orderBookWsClient.getSnapshot(orderBookSnapshot);
+  // // orderBook.applySnapshot(orderBookSnapshot);
+  // // orderBook.printTop10();
+  // for (int _ : std::views::iota(0, 10000)) {
+  //   // IncrementalUpdate incrementalUpdate;
+  //   // orderBookWsClient.getIncrementalUpdate(incrementalUpdate);
+  //   // orderBook.printTop10();
+  // }
 
   // OrderBookSnapshot orderBookSnapshot;
   // orderBookSnapshot.sequence = 16;
@@ -78,7 +95,7 @@ int main(int argc, char* argv[]) {
   // incrementalUpdate.bids.push_back({.price = 3988.50, .size = 44, .sequence =
   // 18}); orderBook.applyIncrementalUpdate(std::move(incrementalUpdate));
   // orderBook.printTop10();
-  ioc.run();
+  // ioc.run();
   std::cout << "------------------ end" << std::endl;
 
   return 0;

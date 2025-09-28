@@ -6,6 +6,8 @@ add_executable(OrderBook
     OrderBookWebClient.cpp
     utils.cpp
     json_utils.cpp
+    OrderBookStateMachine.cpp
+    OrderBookNetworkConnector.cpp
     main.cpp
 )
 

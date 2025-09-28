@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <format>
 #include <iostream>
+#include <memory>
 #include <string>
 
 #include "AsyncIOHeaders.h"
@@ -19,15 +20,15 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
   std::string m_text;
 
  public:
-  // Resolver and socket require an io_context
   explicit WebSocketClient(asio::io_context &ioc)
       : m_resolver(asio::make_strand(ioc)),
         m_tcpStream(asio::make_strand(ioc)) {}
 
   // Start the asynchronous operation
-  void run(char const *host, char const *port, char const *text) {
+  void run(std::string_view host, std::string_view port,
+           std::string_view text) {
     // Save these for later
-    host = host;
+    m_host = host;
     m_text = text;
 
     // Look up the domain name
@@ -142,14 +143,17 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
   }
 };
 
-OrderBookWsClient::OrderBookWsClient(boost::asio::io_context &ioc,
-                                     std::string_view host,
-                                     std::string_view port,
-                                     std::string_view uri, int httpVersion)
+OrderBookWsClient::OrderBookWsClient(
+    IncrementalUpdateCallback incrementalUpdateCallback,
+    OnDisconnectCallback disconnectCallback, boost::asio::io_context &ioc,
+    std::string_view host, std::string_view port, std::string_view uri,
+    int httpVersion)
     : m_host{host},
       m_port{port},
       m_uri{uri},
       m_httpVersion{httpVersion},
+      m_incrementalUpdateCallback{incrementalUpdateCallback},
+      m_disconnectCallback{disconnectCallback},
       m_webSocketClient{std::make_unique<WebSocketClient>(ioc)} {}
 
 void OrderBookWsClient::jsonToIncrementalUpdate(
@@ -172,4 +176,4 @@ void OrderBookWsClient::jsonToIncrementalUpdate(
                                  withSequence);
 }
 
-void OrderBookWsClient::sendSubscriptionRequest() {}
+OrderBookWsClient::~OrderBookWsClient() = default;

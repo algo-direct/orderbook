@@ -217,3 +217,5 @@ void OrderBookWebClient::getIncrementalUpdate(
 
   jsonToIncrementalUpdate(httpResult.body(), incrementalUpdate);
 }
+
+OrderBookWebClient::~OrderBookWebClient() = default;

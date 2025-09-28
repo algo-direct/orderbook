@@ -1,4 +1,5 @@
 #pragma once
+
 #include <iostream>
 void printTimestamp(bool withNewLine = true);
 

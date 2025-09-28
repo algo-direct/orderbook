@@ -13,7 +13,10 @@ class OrderBookSnapshot;
 class IncrementalUpdate;
 class HttpGetter;
 
+using OrderBookSnapshotCallback = std::function<void(OrderBookSnapshot&&)>;
+
 class OrderBookWebClient {
+  OrderBookSnapshotCallback m_orderBookSnapshotCallback;
   std::string m_host;
   std::string m_port;
   std::string m_uri;
@@ -29,6 +32,7 @@ class OrderBookWebClient {
   OrderBookWebClient(boost::asio::io_context& ioc, std::string_view host,
                      std::string_view port, std::string_view uri,
                      int httpVersion);
+  ~OrderBookWebClient();
   void getSnapshot(OrderBookSnapshot& orderBookSnapshot);
   void getIncrementalUpdate(IncrementalUpdate& incrementalUpdate);
 };
