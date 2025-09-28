@@ -6,87 +6,219 @@ import asyncio
 import time
 import json
 import random
+import argparse
+
+import utils
 
 def getMillisecondsSinceEpoch():
     return int(round(time.time() * 1000))
 
-
-
 class FakeOrderBook:    
-    def __init__(self):
-        self.index = 0
-        self.marketData = json.load(open("sim_data.json"))["close"]
-        self.spreadRange = [0.002, 200]
+    def __init__(self, priceDecimalPlaces = 4, sizeDecimalPlaces = 8, spreadRange = [0.01, 0.1], orderSizeRange = [0.0001, 1], maxLevels = 100):
+        self.priceDecimalPlaces = priceDecimalPlaces
+        self.sizeDecimalPlaces = sizeDecimalPlaces
+        self.spreadRange = spreadRange # gap between bbo and ltp, in % of ltp
+        self.orderSizeRange = orderSizeRange
+        self.maxLevels = maxLevels
         self.sequence = 0
         self.bids = []
         self.asks = []
-        self.maxLevels = 100
-        self.snapshot = {
-            "time": str(getMillisecondsSinceEpoch()),
-            "sequence": str(self.sequence),
-            "asks":[
-                ["3988.62","8"],
-                ["3988.61","32"],
-                ["3988.60","47"],
-                ["3988.59","3"],
-            ],
-            "bids":[
-                ["3988.51","56"],
-                ["3988.50","15"],
-                ["3988.49","100"],
-                ["3988.48","10"]
-            ]
-        }
+        self.timestamp = getMillisecondsSinceEpoch()
+
+        self.marketData = json.load(open("simulator/sim_data.json"))["close"]
+        self.index = 0 # index in self.marketData 
+        self.ltp = 0   
     
-    def generateRandomPriceChanges(self):
+    def generateFirstRandomSpanshot(self):
+        self.updateNextLTP()
+        self.sequence = 0
+        bestBid = self.ltp - random.uniform(self.spreadRange[0], self.spreadRange[0])
+        bestAsk = self.ltp + random.uniform(self.spreadRange[0], self.spreadRange[0])
+        bids = [bestBid]
+        bids.extend([ bestBid - level for level in self.generateRandomPriceLevels(numLevels = self.maxLevels, reverseSort=True)])
+        asks = [bestAsk]
+        asks.extend([ bestAsk + level for level in self.generateRandomPriceLevels(numLevels = self.maxLevels)])
+        while len(bids) or len(asks):
+            bidOrAsk = random.choice(["bid", "ask"])
+            levels = None
+            if bidOrAsk == "bid":
+                if not len(bids): continue
+                nextPriceLevel = bids.pop(0)
+                levels = self.bids
+            else:
+                if not len(asks): continue
+                nextPriceLevel = asks.pop(0)
+                levels = self.asks
+            self.sequence += 1
+            nextPriceLevel = utils.truncate(nextPriceLevel, self.priceDecimalPlaces)
+            nextSize = utils.truncate(
+                random.uniform(self.orderSizeRange[0], self.orderSizeRange[1])
+                    ,self.sizeDecimalPlaces)
+            levels.append([nextPriceLevel, nextSize])
+        
+        self.asks = self.asks[:self.maxLevels]
+        self.bids = self.bids[:self.maxLevels]
+        self.timestamp = getMillisecondsSinceEpoch()
+    
+    def getSpanshot(self):
+        return {
+            "code": "200000",
+            "data": {
+                "time": self.timestamp,
+                "sequence": str(self.sequence),
+                "bids": [[str(price), str(size)] for price, size in self.bids],
+                "asks": [[str(price), str(size)] for price, size in self.asks]
+            }
+        }
+
+    def updateNextLTP(self):
+        self.ltp = self.marketData[self.index]
+        self.index += 1
+        if self.index >= len(self.marketData):
+            self.index = 0
+            originalSequence = self.sequence            
+            self.generateFirstRandomSpanshot()
+            self.sequence = self.sequence + originalSequence
+    
+    def generateRandomPriceLevels(self, numLevels, reverseSort = False):
         alpha = 0.1
         deltas = []
-        for i in range(self.maxLevels):
+        for _ in range(numLevels):
             paretoRandom = random.paretovariate(alpha)
             scaledValue = ((paretoRandom - 1) / (100 - 1)) * (100 - 1) + 1
             clampedValue = min(max(paretoRandom, 1), 100)
             if clampedValue == 100: continue
             deltas.append(clampedValue)
+        deltas.sort(reverse=reverseSort)
         return deltas
 
-    def updateOrderBook(self):
-        ltp = self.marketData[self.index]
+    def updateOrderBookUsingNextLTP(self):
+        self.updateNextLTP()
+        sequenceStart = self.sequence + 1        
 
-        topOftheBook = 
+        nextBestBid = utils.truncate(
+            self.ltp - random.uniform(self.spreadRange[0], self.spreadRange[0]),
+            self.priceDecimalPlaces
+        )
+        nextBestAsk = utils.truncate(
+            self.ltp + random.uniform(self.spreadRange[0], self.spreadRange[0]),
+            self.priceDecimalPlaces
+        )
 
-        self.index += 1
-        if self.index >= len(self.marketData):
-            self.index = 0
-    
+        lastBestBid = self.bids[0][0]
+        lastBestAsk = self.asks[0][0]
+
+        removedBids = []
+        removedAsks = []
+
+        # ------------ Remove bids or asks if needed ------------
+        if lastBestBid > nextBestBid:
+            # need to removed some Bid levels
+            for bid, size in self.bids:
+                if bid >= nextBestBid:
+                    self.sequence += 1
+                    size = 0
+                    removedBids.append([str(bid), str(size), str(self.sequence)])
+                else:
+                    break
+            self.bids = self.bids[sequenceStart - self.sequence + 1:] # remove from the top
+        elif lastBestAsk < nextBestAsk:
+            # need to removed some Bid levels
+            for ask, size in self.asks:
+                if ask > nextBestBid:
+                    self.sequence += 1
+                    size = 0
+                    removedAsks.append([str(ask), str(size), str(self.sequence)])
+            self.asks = self.asks[sequenceStart - self.sequence + 1:] # remove from the top
+
+        # ------------ Add best bids and best asks levels ------------
+        self.bids = [
+            [nextBestBid, utils.truncate(
+                random.uniform(self.orderSizeRange[0], self.orderSizeRange[1])
+                    ,self.sizeDecimalPlaces)
+            ]
+        ] + self.bids
+
+        self.asks = [
+            [nextBestAsk, utils.truncate(
+                random.uniform(self.orderSizeRange[0], self.orderSizeRange[1])
+                    ,self.sizeDecimalPlaces)
+            ]
+        ] + self.asks
+
+        # ------------ Update order size of random levels of bids and asks ------------
+
+        updatedBids = []
+        updatedAsks = []
+
+        updateSequenceStart = self.sequence + 1
+
+        def updateRandomLevels(levels, updates):
+            levelsToUpdate = set([int(index) for index in  self.generateRandomPriceLevels(numLevels = self.maxLevels)])
+            for index in levelsToUpdate:
+                if index < 1: continue
+                if index >= len(levels): break
+                newSize = utils.truncate(
+                    random.uniform(self.orderSizeRange[0], self.orderSizeRange[1]),
+                    self.sizeDecimalPlaces
+                )
+                levels[index][1] = newSize
+                self.sequence += 1  
+                updates.append([str(levels[index][0]), str(newSize)])
+
+        updateRandomLevels(self.bids, updatedBids)
+        updateRandomLevels(self.asks, updatedAsks)
+        sequenceEnd = self.sequence
+        randomSequences = list(range(updateSequenceStart, sequenceEnd + 1))
+        random.shuffle(randomSequences)
+        assert(len(randomSequences) == (len(updatedBids) + len(updatedAsks)))
+        for update in updatedBids:
+            update.append(str(randomSequences.pop(0)))
+        for update in updatedAsks:
+            update.append(str(randomSequences.pop(0)))
+
+        # print(f"nextBestBid: {nextBestBid}")
+        # print(f"nextBestAsk: {nextBestAsk}")
+        # print(f"lastBestBid: {lastBestBid}")
+        # print(f"lastBestAsk: {lastBestAsk}")
+        # print(f"removedAsks: {removedAsks}")
+        # print(f"removedBids: {removedBids}")
+        # print(f"updatedBids: {updatedBids}")
+        # print(f"updatedAsks: {updatedAsks}")
+        # print(f"len(self.bids): {len(self.bids)}")
+        # print(f"len(self.asks): {len(self.asks)}")
+        self.timestamp = getMillisecondsSinceEpoch()
+        orderbookIncrement = {
+            "topic": "/market/level2:BTC-USDT",
+            "type": "message",
+            "subject": "trade.l2update",
+            "data": {
+                    "changes": {
+                        "asks": removedAsks + updatedAsks,
+                        "bids": removedBids + updatedBids
+                    },
+                    "sequenceEnd": sequenceEnd,
+                    "sequenceStart": sequenceStart,
+                    "symbol": "BTC-USDT",
+                    "time": self.timestamp
+                }
+        }
+        return orderbookIncrement    
 
 class OrderBookSimulator:
 
     def __init__(self):
         self.ws = None
-        self.sequence = 16
-        self.snapshot = {
-            "time": str(getMillisecondsSinceEpoch()),
-            "sequence": str(self.sequence),
-            "asks":[
-                ["3988.62","8"],
-                ["3988.61","32"],
-                ["3988.60","47"],
-                ["3988.59","3"],
-            ],
-            "bids":[
-                ["3988.51","56"],
-                ["3988.50","15"],
-                ["3988.49","100"],
-                ["3988.48","10"]
-            ]
-        }
+        self.fakeOrderBook = FakeOrderBook()
+        self.fakeOrderBook.generateFirstRandomSpanshot()
 
-    # async def snapshot_handler(self, request):
+    async def snapshotHandler(self, request):
+        return web.json_response(self.fakeOrderBook.getSpanshot())
+    
+    async def generateIncrementHandler(self, request):
+        return web.json_response(self.fakeOrderBook.updateOrderBookUsingNextLTP())      
 
-    async def snapshot_handler(self, request):
-        return web.json_response(self.snapshot)
-
-    async def websocket_handler(self, request):
+    async def websocketHandler(self, request):
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
@@ -101,25 +233,39 @@ class OrderBookSimulator:
 
         return ws
 
-    def create_runner(self):
+    def createRunner(self):
         app = web.Application()
         app.add_routes([
-            web.get('/snapshot',   self.snapshot_handler),
-            web.get('/ws', self.websocket_handler),
+            web.get('/snapshot',   self.snapshotHandler),
+            web.get('/generateIncrement',   self.generateIncrementHandler),
+            web.get('/ws', self.websocketHandler),
         ])
         return web.AppRunner(app)
 
-
-    async def start_server(self, host="127.0.0.1", port=40000):
-        runner = self.create_runner()
+    async def startServer(self, host, port):
+        runner = self.createRunner()
         await runner.setup()
         site = web.TCPSite(runner, host, port)
         await site.start()
 
-
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="OrderBookSimulator")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="webserver listening host")
+    parser.add_argument("--port", type=int, default=40000, help="webserver listening port")
+    args = parser.parse_args()
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     orderBookSimulator = OrderBookSimulator()
-    loop.run_until_complete(orderBookSimulator.start_server())
+    loop.run_until_complete(orderBookSimulator.startServer(args.host, args.port))
     loop.run_forever()
+
+    # fakeOrderBook = FakeOrderBook()
+    # fakeOrderBook.generateFirstRandomSpanshot()
+    # print(fakeOrderBook.getSpanshot())
+    # # # print(json.dumps(utils.convertNumbersToStrings(fakeOrderBook.snapshot), indent=4))
+    # for i in range(1):
+    #     print("===============================")
+    #     print(fakeOrderBook.updateOrderBookUsingNextLTP())
+    #     print("===============================--------")
+    #     print(fakeOrderBook.getSpanshot())

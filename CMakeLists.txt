@@ -6,6 +6,14 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(FetchContent)
+
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY "https://github.com/nlohmann/json.git"
+)
+
+FetchContent_MakeAvailable(nlohmann_json)
 
 add_subdirectory(src)
 

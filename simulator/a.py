@@ -1,6 +1,7 @@
 import json
 
 j = json.load(open("sim_data.json"))
+print(len(j['open']))
 o = {
     "open": [],
     "high": [],
