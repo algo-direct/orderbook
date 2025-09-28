@@ -9,7 +9,7 @@
         "name": "(gdb) Launch",
         "type": "cppdbg",
         "request": "launch",
-        "program": "${workspaceFolder}/main",
+        "program": "${command:cmake.launchTargetPath}",
         "args": [],
         "stopAtEntry": false,
         "cwd": "${fileDirname}",

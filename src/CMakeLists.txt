@@ -3,6 +3,7 @@
 add_executable(OrderBook    
     logging.cpp
     OrderBookWsClient.cpp
+    utils.cpp
     main.cpp
 )
 
