@@ -4,6 +4,7 @@ add_executable(OrderBook
     logging.cpp
     OrderBookWsClient.cpp
     OrderBookHTTPClient.cpp
+    OrderBookHTTPServer.cpp
     utils.cpp
     json_utils.cpp
     OrderBookNetworkConnector.cpp
@@ -13,6 +14,7 @@ add_executable(OrderBook
 target_link_libraries(OrderBook PRIVATE 
     nlohmann_json::nlohmann_json
     Boost::program_options
+    boost_http_server
 )
 
 

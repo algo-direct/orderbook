@@ -6,7 +6,7 @@
 
 class JsonUtils {
  public:
-  static void populatePriceLevels(Levels &levels,
-                                  const nlohmann::json &jsonLevels,
+  static void populatePriceLevels(Levels& levels,
+                                  const nlohmann::json& jsonLevels,
                                   bool withSequence = false);
 };

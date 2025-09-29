@@ -22,6 +22,8 @@ class OrderBookNetworkConnector {
   std::unique_ptr<boost::asio::io_context> m_ioc;
   std::string m_host;
   std::string m_port;
+  int m_reconnectDelay;
+  bool m_snapshotReceived;
   OrderBookRef m_orderBook;
   //   bool m_isSnapshotReceived{false};
   std::unique_ptr<OrderBookWsClient> m_orderBookWsClient;
@@ -32,7 +34,8 @@ class OrderBookNetworkConnector {
   void onSnapshot(OrderBookSnapshot&& orderBookSnapshot);
 
  public:
-  OrderBookNetworkConnector(std::string_view host, std::string_view port);
+  OrderBookNetworkConnector(std::string_view host, std::string_view port,
+                            int reconnectDelay);
   ~OrderBookNetworkConnector();
   void run();
 };

@@ -23,11 +23,11 @@ struct Level {
 using Levels = std::vector<Level>;
 
 struct PriceCompareLessThan {
-  bool operator()(const PriceType &lhs, const PriceType &rhs) const;
+  bool operator()(const PriceType& lhs, const PriceType& rhs) const;
 };
 
 struct PriceCompareGreaterThan {
-  bool operator()(const PriceType &lhs, const PriceType &rhs) const;
+  bool operator()(const PriceType& lhs, const PriceType& rhs) const;
 };
 
 using AskLevels = std::map<PriceType, Level, PriceCompareLessThan>;

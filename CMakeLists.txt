@@ -19,6 +19,7 @@ find_package(Boost REQUIRED
     COMPONENTS program_options
 )
 
+add_subdirectory(boost_http_server)
 add_subdirectory(src)
 
 include(CTest)

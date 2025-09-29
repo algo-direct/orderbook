@@ -1,12 +1,11 @@
 #include <boost/program_options.hpp>
-#include <functional>
 #include <iostream>
-#include <memory>
 #include <ranges>
 #include <string>
 
 #include "OrderBookNetworkConnector.h"
 #include "logging.h"
+#include "utils.h"
 
 namespace po = boost::program_options;
 
@@ -16,7 +15,11 @@ int main(int argc, char* argv[]) {
       "host", po::value<std::string>()->default_value("127.0.0.1"),
       "Hostname of OrderBook Feed Server or Simulation")  //
       ("port", po::value<std::string>()->default_value("40000"),
-       "Port nuumber of OrderBook Feed Server or Simulation");
+       "Port nuumber of OrderBook Feed Server or Simulation")  //
+      ("reconnect_delay", po::value<int>()->default_value(2000),
+       "Delay in milliseconds before reconnect to OrderBook Feed Server or "
+       "Simulation "
+       "after having connection issues.");
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -27,8 +30,18 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  auto reconnectDelay = vm["reconnect_delay"].as<int>();
+  if (reconnectDelay < 10) {
+    LOG_ERROR(std::format(
+        "reconnect_delay is {}, Cannot reconnect sooner than 10 milliseconds",
+        reconnectDelay));
+    std::cout << desc << std::endl;
+    return 1;
+  }
+
   OrderBookNetworkConnector orderBookNetworkConnector(
-      vm["host"].as<std::string>(), vm["port"].as<std::string>());
+      vm["host"].as<std::string>(), vm["port"].as<std::string>(),
+      reconnectDelay);
   orderBookNetworkConnector.run();
   LOG_INFO("After orderBookNetworkConnector.run()\n");
 

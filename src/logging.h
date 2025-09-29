@@ -1,12 +1,13 @@
 #pragma once
 
 #include <iostream>
-void printTimestamp(bool withNewLine = true);
+void printTimestamp(bool withNewLine = false);
 
-#define LOG_LINE(level, ...)                                                 \
-  do {                                                                       \
-    printTimestamp();                                                        \
-    std::cout << " " << __FILE__ << ":" << __LINE__ << level << __VA_ARGS__; \
+#define LOG_LINE(level, ...)                                        \
+  do {                                                              \
+    printTimestamp();                                               \
+    std::cout << " " << level << __FILE__ << ":" << __LINE__ << " " \
+              << __VA_ARGS__ << std::endl;                          \
   } while (false)
 
 #define ERROR_LEVEL 1

@@ -295,13 +295,3 @@ if __name__ == "__main__":
     orderBookSimulator = OrderBookSimulator()
     loop.run_until_complete(orderBookSimulator.startServer(args.host, args.port))
     loop.run_forever()
-
-    # fakeOrderBook = FakeOrderBook()
-    # fakeOrderBook.generateFirstRandomSpanshot()
-    # print(fakeOrderBook.getSpanshot())
-    # # # print(json.dumps(utils.convertNumbersToStrings(fakeOrderBook.snapshot), indent=4))
-    # for i in range(1):
-    #     print("===============================")
-    #     print(fakeOrderBook.updateOrderBookUsingNextLTP())
-    #     print("===============================--------")
-    #     print(fakeOrderBook.getSpanshot())

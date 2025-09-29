@@ -3,12 +3,12 @@
 
 #include "utils.h"
 
-void JsonUtils::populatePriceLevels(Levels &levels,
-                                    const nlohmann::json &jsonLevels,
+void JsonUtils::populatePriceLevels(Levels& levels,
+                                    const nlohmann::json& jsonLevels,
                                     bool withSequence) {
   levels.reserve(std::size(jsonLevels));
-  for (const auto &jsonLevel : jsonLevels) {
-    const auto &bidSizeAndSequence = jsonLevel.get<std::vector<std::string>>();
+  for (const auto& jsonLevel : jsonLevels) {
+    const auto& bidSizeAndSequence = jsonLevel.get<std::vector<std::string>>();
     if (withSequence) {
       if (size(bidSizeAndSequence) != 3) {
         auto error = std::format(

@@ -1,6 +1,7 @@
-
-
 #include "OrderBookNetworkConnector.h"
+
+#include <chrono>
+#include <thread>
 
 #include "AsyncIOHeaders.h"
 #include "OrderBook.hpp"
@@ -9,19 +10,33 @@
 #include "logging.h"
 
 OrderBookNetworkConnector::OrderBookNetworkConnector(std::string_view host,
-                                                     std::string_view port)
-    : m_ioc{std::make_unique<asio::io_context>()}, m_host{host}, m_port{port} {}
+                                                     std::string_view port,
+                                                     int reconnectDelay)
+    : m_ioc{std::make_unique<asio::io_context>()},
+      m_host{host},
+      m_port{port},
+      m_reconnectDelay{reconnectDelay},
+      m_snapshotReceived{false} {}
 
 void OrderBookNetworkConnector::reset() {
   LOG_INFO("Resetting..");
+  m_snapshotReceived = false;
+  m_orderBookWsClient.reset();
+  m_orderBookHTTPClient.reset();
   m_orderBook = std::make_unique<OrderBook>();
   //   m_isSnapshotReceived = false;
   auto incrementalUpdateCallback = [&](IncrementalUpdate&& incrementalUpdate) {
-    LOG_INFO("incrementalUpdateCallback");
+    LOG_TRACE("incrementalUpdateCallback");
     onIncrementalUpdate(std::move(incrementalUpdate));
   };
 
-  auto disconnectCallback = [&]() { reset(); };
+  auto disconnectCallback = [&]() {
+    LOG_INFO("Sleeping before reconnecting...");
+    std::this_thread::sleep_for(std::chrono::milliseconds(m_reconnectDelay));
+    LOG_INFO("Reconnecting...");
+    reset();
+    m_orderBookWsClient->run();
+  };
   m_orderBookWsClient = std::make_unique<OrderBookWsClient>(
       incrementalUpdateCallback, disconnectCallback, *m_ioc, m_host, m_port,
       "/ws");
@@ -38,11 +53,9 @@ void OrderBookNetworkConnector::run() {
 
 void OrderBookNetworkConnector::onIncrementalUpdate(
     IncrementalUpdate&& incrementalUpdate) {
-  LOG_INFO("onIncrementalUpdate");
-  if (!m_orderBook) {
-    return;
-  }
-  if (!m_orderBookHTTPClient) {
+  LOG_TRACE("onIncrementalUpdate");
+  m_orderBook->applyIncrementalUpdate(std::move(incrementalUpdate));
+  if (!m_snapshotReceived && !m_orderBookHTTPClient) {
     LOG_INFO("Creating OrderBookHTTPClient ..");
     auto snapshotCallback = [&](OrderBookSnapshot&& orderBookSnapshot) {
       onSnapshot(std::move(orderBookSnapshot));
@@ -52,17 +65,15 @@ void OrderBookNetworkConnector::onIncrementalUpdate(
         snapshotCallback, disconnectCallback, *m_ioc, m_host, m_port,
         "/snapshot");
     m_orderBookHTTPClient->run();
-  }
-  m_orderBook->applyIncrementalUpdate(std::move(incrementalUpdate));
+  }  
 }
 
 void OrderBookNetworkConnector::onSnapshot(
     OrderBookSnapshot&& orderBookSnapshot) {
   LOG_INFO("Received snapshot");
-  if (!m_orderBook) {
-    return;
-  }
   m_orderBook->applySnapshot(std::move(orderBookSnapshot));
+  m_orderBookHTTPClient.reset();
+  m_snapshotReceived = true;
 }
 
 OrderBookNetworkConnector::~OrderBookNetworkConnector() = default;

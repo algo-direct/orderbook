@@ -26,7 +26,7 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
   beast::flat_buffer buffer;
 
  public:
-  explicit WebSocketClient(asio::io_context &ioc, DataCallback dataCallback,
+  explicit WebSocketClient(asio::io_context& ioc, DataCallback dataCallback,
                            DisconnectCallback disconnectCallback,
                            std::string_view host, std::string_view port,
                            std::string_view uri)
@@ -83,7 +83,7 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
 
     // Set a decorator to change the User-Agent of the handshake
     m_tcpStream.set_option(
-        websocket::stream_base::decorator([](websocket::request_type &req) {
+        websocket::stream_base::decorator([](websocket::request_type& req) {
           req.set(http::field::user_agent,
                   std::string(BOOST_BEAST_VERSION_STRING) +
                       " websocket-client-async");
@@ -136,7 +136,7 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
     boost::ignore_unused(bytes_transferred);
 
     if (ec) {
-      LOG_ERROR("reading data from websocket failed: " << ec.message());
+      LOG_ERROR("Reading data from websocket failed: " << ec.message());
       m_disconnectCallback();
       return;
     }
@@ -145,7 +145,7 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
              << buffer.data().size() << " "
              << beast::make_printable(buffer.data()) << std::endl);
     m_dataCallback(
-        {static_cast<const char *>(buffer.data().data()), buffer.size()});
+        {static_cast<const char*>(buffer.data().data()), buffer.size()});
     buffer.consume(buffer.size());
 
     m_tcpStream.async_read(buffer,
@@ -170,7 +170,7 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
 
 OrderBookWsClient::OrderBookWsClient(
     IncrementalUpdateCallback incrementalUpdateCallback,
-    DisconnectCallback disconnectCallback, boost::asio::io_context &ioc,
+    DisconnectCallback disconnectCallback, boost::asio::io_context& ioc,
     std::string_view host, std::string_view port, std::string_view uri)
     : m_host{host},
       m_port{port},
@@ -200,20 +200,20 @@ void OrderBookWsClient::run() {
 }
 
 void OrderBookWsClient::jsonToIncrementalUpdate(
-    std::string_view json, IncrementalUpdate &incrementalUpdate) {
+    std::string_view json, IncrementalUpdate& incrementalUpdate) {
   nlohmann::json jsonIncrementalUpdate = nlohmann::json::parse(json)["data"];
   incrementalUpdate.timestamp =
       TimePoint(jsonIncrementalUpdate["time"].get<long>());
   incrementalUpdate.sequenceStart =
       jsonIncrementalUpdate["sequenceStart"].get<std::size_t>();
-  incrementalUpdate.sequenceStart =
-      jsonIncrementalUpdate["sequenceStart"].get<std::size_t>();
+  incrementalUpdate.sequenceEnd =
+      jsonIncrementalUpdate["sequenceEnd"].get<std::size_t>();
   bool withSequence = true;
-  const auto &jsonBids = jsonIncrementalUpdate["changes"]["bids"]
+  const auto& jsonBids = jsonIncrementalUpdate["changes"]["bids"]
                              .template get<std::vector<nlohmann::json>>();
   JsonUtils::populatePriceLevels(incrementalUpdate.bids, jsonBids,
                                  withSequence);
-  const auto &jsonAsks = jsonIncrementalUpdate["changes"]["asks"]
+  const auto& jsonAsks = jsonIncrementalUpdate["changes"]["asks"]
                              .template get<std::vector<nlohmann::json>>();
   JsonUtils::populatePriceLevels(incrementalUpdate.asks, jsonAsks,
                                  withSequence);

@@ -23,7 +23,7 @@ class HttpGetter : public std::enable_shared_from_this<HttpGetter> {
  public:
   // Objects are constructed with a strand to
   // ensure that handlers do not execute concurrently.
-  explicit HttpGetter(asio::io_context &ioc, DataCallback dataCallback,
+  explicit HttpGetter(asio::io_context& ioc, DataCallback dataCallback,
                       ErrorCallback errorCallback)
       : m_resolver{asio::make_strand(ioc)},
         m_stream{asio::make_strand(ioc)},
@@ -97,10 +97,11 @@ class HttpGetter : public std::enable_shared_from_this<HttpGetter> {
       return;
     }
 
-    // Write the message to standard out
-    m_dataCallback({static_cast<const char *>(m_httpResponse.body().data()),
+    LOG_INFO("data received over http: " << m_httpResponse.body());
+
+    m_dataCallback({static_cast<const char*>(m_httpResponse.body().data()),
                     m_httpResponse.body().size()});
-    
+
     // Gracefully close the socket
     m_stream.socket().shutdown(tcp::socket::shutdown_both, ec);
 
@@ -113,7 +114,7 @@ class HttpGetter : public std::enable_shared_from_this<HttpGetter> {
 
 OrderBookHTTPClient::OrderBookHTTPClient(
     OrderBookSnapshotCallback orderBookSnapshotCallback,
-    ErrorCallback errorCallback, boost::asio::io_context &ioc,
+    ErrorCallback errorCallback, boost::asio::io_context& ioc,
     std::string_view host, std::string_view port, std::string_view uri)
     : m_orderBookSnapshotCallback{orderBookSnapshotCallback},
       m_errorCallback{errorCallback},
@@ -134,15 +135,15 @@ OrderBookHTTPClient::~OrderBookHTTPClient() = default;
 void OrderBookHTTPClient::run() { m_httpGetter->run(m_host, m_port, m_uri); };
 
 void OrderBookHTTPClient::jsonToOrderBookSnapshot(
-    std::string_view json, OrderBookSnapshot &orderBookSnapshot) {
+    std::string_view json, OrderBookSnapshot& orderBookSnapshot) {
   nlohmann::json jsonSnapshot = nlohmann::json::parse(json)["data"];
   orderBookSnapshot.timestamp = TimePoint(jsonSnapshot["time"].get<long>());
   orderBookSnapshot.sequence =
       std::stoull(jsonSnapshot["sequence"].get<std::string>());
-  const auto &jsonBids =
+  const auto& jsonBids =
       jsonSnapshot["bids"].template get<std::vector<nlohmann::json>>();
   JsonUtils::populatePriceLevels(orderBookSnapshot.bids, jsonBids);
-  const auto &jsonAsks =
+  const auto& jsonAsks =
       jsonSnapshot["asks"].template get<std::vector<nlohmann::json>>();
   JsonUtils::populatePriceLevels(orderBookSnapshot.asks, jsonAsks);
 }
