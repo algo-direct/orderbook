@@ -4,6 +4,8 @@
 #include <memory>
 #include <string>
 
+#include "spin_lock.hpp"
+
 namespace boost {
 namespace asio {
 class io_context;
@@ -18,11 +20,11 @@ class OrderBook;
 using OrderBookRef = std::unique_ptr<OrderBook>;
 
 class OrderBookNetworkConnector {
-  // OrderBookStateMachine& m_orderBookStateMachine;
   std::unique_ptr<boost::asio::io_context> m_ioc;
   std::string m_host;
   std::string m_port;
   int m_reconnectDelay;
+  SpinLock m_spinLock;
   bool m_snapshotReceived;
   OrderBookRef m_orderBook;
   //   bool m_isSnapshotReceived{false};
@@ -35,7 +37,8 @@ class OrderBookNetworkConnector {
 
  public:
   OrderBookNetworkConnector(std::string_view host, std::string_view port,
-                            int reconnectDelay);
+                            int reconnectDelay, bool useLock);
   ~OrderBookNetworkConnector();
+  std::string getSnapshot();
   void run();
 };

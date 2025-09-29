@@ -11,10 +11,11 @@ add_executable(OrderBook
     main.cpp
 )
 
+target_include_directories(OrderBook PRIVATE 
+     ${CMAKE_SOURCE_DIR}/third_party
+)
+
 target_link_libraries(OrderBook PRIVATE 
-    nlohmann_json::nlohmann_json
     Boost::program_options
     boost_http_server
 )
-
-

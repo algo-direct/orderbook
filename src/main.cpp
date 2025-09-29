@@ -3,6 +3,7 @@
 #include <ranges>
 #include <string>
 
+#include "OrderBookHTTPServer.h"
 #include "OrderBookNetworkConnector.h"
 #include "logging.h"
 #include "utils.h"
@@ -19,7 +20,13 @@ int main(int argc, char* argv[]) {
       ("reconnect_delay", po::value<int>()->default_value(2000),
        "Delay in milliseconds before reconnect to OrderBook Feed Server or "
        "Simulation "
-       "after having connection issues.");
+       "after having connection issues.")  //
+      ("http_server_port", po::value<int>()->default_value(0),
+       "Optional, use as http server port to server OrderBook, "
+       "if 0 value is provided then it will not start as http server.")  //
+      ("http_doc_dir",
+       po::value<std::string>()->default_value("order_booker_web_content"),
+       "Top dir path to be used for serveing files over http.");
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -39,9 +46,42 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  OrderBookNetworkConnector orderBookNetworkConnector(
-      vm["host"].as<std::string>(), vm["port"].as<std::string>(),
-      reconnectDelay);
+  auto httpServerPort = vm["http_server_port"].as<int>();
+  if (httpServerPort < 0) {
+    LOG_ERROR(
+        std::format("http_server_port is {}, must be a positive port number",
+                    httpServerPort));
+    std::cout << desc << std::endl;
+    return 1;
+  }
+
+  if (httpServerPort > 65535) {
+    LOG_ERROR(std::format(
+        "http_server_port is {}, port number must be less than 65535",
+        httpServerPort));
+    std::cout << desc << std::endl;
+    return 1;
+  }
+
+  auto host = vm["host"].as<std::string>();
+  auto port = vm["port"].as<std::string>();
+  auto httpDocDir = vm["http_doc_dir"].as<std::string>();
+
+  bool runAsHTTPServer = httpServerPort > 0;
+  bool useLock = runAsHTTPServer;
+
+  OrderBookNetworkConnector orderBookNetworkConnector(host, port,
+                                                      reconnectDelay, useLock);
+
+  std::unique_ptr<OrderBookHTTPServer> m_orderBookHTTPServer;
+  if (runAsHTTPServer) {
+    m_orderBookHTTPServer = std::make_unique<OrderBookHTTPServer>(
+        [&]() {
+          // callback hit by http server to get snapshot
+          return orderBookNetworkConnector.getSnapshot();
+        },
+        host, port, httpDocDir);
+  }
   orderBookNetworkConnector.run();
   LOG_INFO("After orderBookNetworkConnector.run()\n");
 

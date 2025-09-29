@@ -6,20 +6,20 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-include(FetchContent)
+# include(FetchContent)
 
-FetchContent_Declare(
-    nlohmann_json
-    GIT_REPOSITORY "https://github.com/nlohmann/json.git"
-)
+# FetchContent_Declare(
+#     nlohmann_json
+#     GIT_REPOSITORY "https://github.com/nlohmann/json.git"
+# )
 
-FetchContent_MakeAvailable(nlohmann_json)
+# FetchContent_MakeAvailable(nlohmann_json)
 
 find_package(Boost REQUIRED
     COMPONENTS program_options
 )
 
-add_subdirectory(boost_http_server)
+add_subdirectory(third_party)
 add_subdirectory(src)
 
 include(CTest)

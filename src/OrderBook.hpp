@@ -135,4 +135,14 @@ class OrderBook {
     std::cout
         << "============================================================\n";
   }
+
+  SequenceType getSequence() const { return m_sequence; }
+
+  TimePoint getLastUpdateTimestamp() const { return m_lastUpdateTimestamp; }
+
+  bool isSnapshotReceived() const { return m_snapshotReceived; }
+
+  const BidLevels& getBids() const { return m_bids; }
+
+  const AskLevels& getAsks() const { return m_asks; }
 };

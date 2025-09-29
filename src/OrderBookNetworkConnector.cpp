@@ -7,19 +7,23 @@
 #include "OrderBook.hpp"
 #include "OrderBookHTTPClient.h"
 #include "OrderBookWsClient.h"
+#include "json_utils.h"
 #include "logging.h"
 
 OrderBookNetworkConnector::OrderBookNetworkConnector(std::string_view host,
                                                      std::string_view port,
-                                                     int reconnectDelay)
+                                                     int reconnectDelay,
+                                                     bool useLock)
     : m_ioc{std::make_unique<asio::io_context>()},
       m_host{host},
       m_port{port},
       m_reconnectDelay{reconnectDelay},
+      m_spinLock{!useLock},
       m_snapshotReceived{false} {}
 
 void OrderBookNetworkConnector::reset() {
   LOG_INFO("Resetting..");
+  SpinLockGaurd spinLockGaurd(m_spinLock);
   m_snapshotReceived = false;
   m_orderBookWsClient.reset();
   m_orderBookHTTPClient.reset();
@@ -54,7 +58,10 @@ void OrderBookNetworkConnector::run() {
 void OrderBookNetworkConnector::onIncrementalUpdate(
     IncrementalUpdate&& incrementalUpdate) {
   LOG_TRACE("onIncrementalUpdate");
-  m_orderBook->applyIncrementalUpdate(std::move(incrementalUpdate));
+  {
+    SpinLockGaurd spinLockGaurd(m_spinLock);
+    m_orderBook->applyIncrementalUpdate(std::move(incrementalUpdate));
+  }
   if (!m_snapshotReceived && !m_orderBookHTTPClient) {
     LOG_INFO("Creating OrderBookHTTPClient ..");
     auto snapshotCallback = [&](OrderBookSnapshot&& orderBookSnapshot) {
@@ -65,15 +72,29 @@ void OrderBookNetworkConnector::onIncrementalUpdate(
         snapshotCallback, disconnectCallback, *m_ioc, m_host, m_port,
         "/snapshot");
     m_orderBookHTTPClient->run();
-  }  
+  }
 }
 
 void OrderBookNetworkConnector::onSnapshot(
     OrderBookSnapshot&& orderBookSnapshot) {
   LOG_INFO("Received snapshot");
+  SpinLockGaurd spinLockGaurd(m_spinLock);
   m_orderBook->applySnapshot(std::move(orderBookSnapshot));
   m_orderBookHTTPClient.reset();
   m_snapshotReceived = true;
+}
+
+std::string OrderBookNetworkConnector::getSnapshot() {
+  OrderBook orderBook;
+  {
+    SpinLockGaurd spinLockGaurd(m_spinLock);
+    if (!m_orderBook) {
+      throw std::runtime_error("orderBook is being reset.");
+    }
+    // copy order book atomically
+    orderBook = *m_orderBook;
+  }
+  return JsonUtils::orderBookSnapshotToJson(orderBook);
 }
 
 OrderBookNetworkConnector::~OrderBookNetworkConnector() = default;

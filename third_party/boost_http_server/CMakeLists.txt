@@ -1,5 +1,3 @@
-
-
 add_library(boost_http_server STATIC
     connection.cpp
     connection_manager.cpp
@@ -10,5 +8,6 @@ add_library(boost_http_server STATIC
     server.cpp
 )
 
-
-
+target_include_directories(boost_http_server PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)

@@ -1,6 +1,8 @@
-
 #include "json_utils.h"
 
+#include <string>
+
+#include "OrderBook.hpp"
 #include "utils.h"
 
 void JsonUtils::populatePriceLevels(Levels& levels,
@@ -58,4 +60,30 @@ void JsonUtils::populatePriceLevels(Levels& levels,
       throw std::runtime_error(error);
     }
   }
+}
+
+std::string JsonUtils::orderBookSnapshotToJson(const OrderBook& orderBook) {
+  using namespace nlohmann;
+  json snapshotJson = json::parse(
+      "{"
+      "\"time\": \"\","
+      "\"sequence\": \"\","
+      "\"bids\": [],"
+      "\"asks\": []"
+      "}");
+  snapshotJson.at("time") =
+      std::to_string(orderBook.getLastUpdateTimestamp().count());
+  snapshotJson.at("sequence") = std::to_string(orderBook.getSequence());
+  // auto& bidsJson = snapshotJson.at("bids");
+  auto priceLevelSetter = [&](const auto& levels, auto& levelsJson) {
+    for (const auto& bid : levels) {
+      json levelJson = json::array();
+      levelJson.push_back(std::to_string(bid.second.price));
+      levelJson.push_back(std::to_string(bid.second.size));
+      levelsJson.push_back(levelJson);
+    }
+  };
+  priceLevelSetter(orderBook.getBids(), snapshotJson.at("bids"));
+  priceLevelSetter(orderBook.getAsks(), snapshotJson.at("asks"));
+  return snapshotJson.dump();
 }
