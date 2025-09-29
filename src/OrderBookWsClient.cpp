@@ -4,6 +4,7 @@
 #include <format>
 #include <iostream>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 
 #include "AsyncIOHeaders.h"
@@ -13,27 +14,35 @@
 #include "logging.h"
 
 class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
+  DataCallback m_dataCallback;
+  DisconnectCallback m_disconnectCallback;
+  std::string m_host;
+  std::string m_port;
+  std::string m_uri;
+  std::string m_text;
+
   tcp::resolver m_resolver;
   websocket::stream<beast::tcp_stream> m_tcpStream;
   beast::flat_buffer buffer;
-  std::string m_host;
-  std::string m_text;
 
  public:
-  explicit WebSocketClient(asio::io_context &ioc)
-      : m_resolver(asio::make_strand(ioc)),
-        m_tcpStream(asio::make_strand(ioc)) {}
+  explicit WebSocketClient(asio::io_context &ioc, DataCallback dataCallback,
+                           DisconnectCallback disconnectCallback,
+                           std::string_view host, std::string_view port,
+                           std::string_view uri)
+      : m_dataCallback{dataCallback},
+        m_disconnectCallback{disconnectCallback},
+        m_host{host},
+        m_port{port},
+        m_uri{uri},
+        m_resolver{asio::make_strand(ioc)},
+        m_tcpStream{asio::make_strand(ioc)} {}
 
   // Start the asynchronous operation
-  void run(std::string_view host, std::string_view port,
-           std::string_view text) {
-    // Save these for later
-    m_host = host;
-    m_text = text;
-
-    // Look up the domain name
+  void run(std::string_view text) {
+    // Look up the domain name first
     m_resolver.async_resolve(
-        host, port,
+        m_host, m_port,
         beast::bind_front_handler(&WebSocketClient::onResolve,
                                   shared_from_this()));
   }
@@ -41,6 +50,7 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
   void onResolve(beast::error_code ec, tcp::resolver::results_type results) {
     if (ec) {
       LOG_ERROR("resolve failed: " << ec.message());
+      m_disconnectCallback();
       return;
     }
 
@@ -59,6 +69,7 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
                  tcp::resolver::results_type::endpoint_type ep) {
     if (ec) {
       LOG_ERROR("connect failed: " << ec.message());
+      m_disconnectCallback();
       return;
     }
 
@@ -82,17 +93,20 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
     // Host HTTP header during the WebSocket handshake.
     // See https://tools.ietf.org/html/rfc7230#section-5.4
     m_host += ':' + std::to_string(ep.port());
+    LOG_INFO("starting handshake m_host: " << m_host);
 
     // Perform the websocket handshake
     m_tcpStream.async_handshake(
-        m_host, "/",
+        m_host, m_uri,
         beast::bind_front_handler(&WebSocketClient::onHandshake,
                                   shared_from_this()));
   }
 
   void onHandshake(beast::error_code ec) {
+    LOG_INFO("on handshake, ec: " << ec);
     if (ec) {
       LOG_ERROR("Web socket handshake failed: " << ec.message());
+      m_disconnectCallback();
       return;
     }
 
@@ -103,10 +117,12 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
   }
 
   void onWrite(beast::error_code ec, std::size_t bytes_transferred) {
+    LOG_INFO("done writing, ec: " << ec);
     boost::ignore_unused(bytes_transferred);
 
     if (ec) {
       LOG_ERROR("writing data on websocket failed: " << ec.message());
+      m_disconnectCallback();
       return;
     }
 
@@ -121,40 +137,67 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
 
     if (ec) {
       LOG_ERROR("reading data from websocket failed: " << ec.message());
+      m_disconnectCallback();
       return;
     }
 
-    // Close the WebSocket connection
-    m_tcpStream.async_close(websocket::close_code::normal,
-                            beast::bind_front_handler(&WebSocketClient::onClose,
-                                                      shared_from_this()));
+    LOG_INFO("Received data on webSocekt, buffer.data().size(): "
+             << buffer.data().size() << " "
+             << beast::make_printable(buffer.data()) << std::endl);
+    m_dataCallback(
+        {static_cast<const char *>(buffer.data().data()), buffer.size()});
+    buffer.consume(buffer.size());
+
+    m_tcpStream.async_read(buffer,
+                           beast::bind_front_handler(&WebSocketClient::onRead,
+                                                     shared_from_this()));
+
+    // // Close the WebSocket connection
+    // m_tcpStream.async_close(websocket::close_code::normal,
+    //                         beast::bind_front_handler(&WebSocketClient::onClose,
+    //                                                   shared_from_this()));
   }
 
   void onClose(beast::error_code ec) {
+    LOG_INFO("closed, ec: " << ec);
     if (ec) {
       LOG_ERROR("Closing websocket connection failed: " << ec.message());
       return;
     }
-
-    // If we get here then the connection is closed gracefully
-
-    // The make_printable() function helps print a ConstBufferSequence
-    std::cout << beast::make_printable(buffer.data()) << std::endl;
+    LOG_INFO("at close buffer size is: " << buffer.data().size());
   }
 };
 
 OrderBookWsClient::OrderBookWsClient(
     IncrementalUpdateCallback incrementalUpdateCallback,
-    OnDisconnectCallback disconnectCallback, boost::asio::io_context &ioc,
-    std::string_view host, std::string_view port, std::string_view uri,
-    int httpVersion)
+    DisconnectCallback disconnectCallback, boost::asio::io_context &ioc,
+    std::string_view host, std::string_view port, std::string_view uri)
     : m_host{host},
       m_port{port},
       m_uri{uri},
-      m_httpVersion{httpVersion},
       m_incrementalUpdateCallback{incrementalUpdateCallback},
       m_disconnectCallback{disconnectCallback},
-      m_webSocketClient{std::make_unique<WebSocketClient>(ioc)} {}
+      m_webSocketClient{std::make_shared<WebSocketClient>(
+          ioc,
+          [&](std::string_view jsonData) {
+            IncrementalUpdate incrementalUpdate;
+            jsonToIncrementalUpdate(jsonData, incrementalUpdate);
+            m_incrementalUpdateCallback(std::move(incrementalUpdate));
+          },
+          disconnectCallback, host, port, uri)} {
+  m_subscriptionRequestJson =
+      "{\n"
+      "   \"id\": 1545910660739,\n"
+      "   \"type\": \"subscribe\",\n"
+      "   \"topic\": \"/market/level2:BTC-USDT\",\n"
+      "   \"response\": true\n"
+      "}\n";
+}
+
+void OrderBookWsClient::run() {
+  LOG_INFO("Running OrderBookWsClient");
+  m_webSocketClient->run(m_subscriptionRequestJson);
+}
 
 void OrderBookWsClient::jsonToIncrementalUpdate(
     std::string_view json, IncrementalUpdate &incrementalUpdate) {

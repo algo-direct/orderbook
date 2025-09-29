@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <functional>
 #include <map>
 #include <queue>
 #include <vector>
@@ -48,3 +49,5 @@ struct IncrementalUpdate {
   Levels bids;
   Levels asks;
 };
+
+using DataCallback = std::function<void(std::string_view)>;

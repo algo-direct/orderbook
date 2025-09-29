@@ -3,10 +3,9 @@
 add_executable(OrderBook    
     logging.cpp
     OrderBookWsClient.cpp
-    OrderBookWebClient.cpp
+    OrderBookHTTPClient.cpp
     utils.cpp
     json_utils.cpp
-    OrderBookStateMachine.cpp
     OrderBookNetworkConnector.cpp
     main.cpp
 )

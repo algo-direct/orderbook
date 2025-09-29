@@ -2,7 +2,7 @@
 
 import logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
@@ -208,18 +208,23 @@ class FakeOrderBook:
 class OrderBookSimulator:
 
     def __init__(self):
-        self.ws = None
+        self.webSocket = None
         self.fakeOrderBook = FakeOrderBook()
         self.fakeOrderBook.generateFirstRandomSpanshot()
 
-    async def wsSenderLoop(self):
+    async def webSocketSenderLoop(self):
         while True:
-            logging.debug("running..")
-            await asyncio.sleep(1)
+            # logging.debug("sleeping..")
+            await asyncio.sleep(2)
+            # logging.debug("running..")
             try:
                 delta = self.fakeOrderBook.updateOrderBookUsingNextLTP()
-                if self.ws:                    
-                    await self.ws.send_str(json.dumps(delta))
+                # delta = { "dd": "yy "}
+                # logging.debug(f"running, not self.webSocket: {not self.webSocket}")
+                # logging.debug(f"running, None == self.webSocket: {None == self.webSocket}")                
+                if None != self.webSocket:
+                    logging.debug("sending data on websocket")                
+                    await self.webSocket.send_json(delta)
             finally:
                 pass
 
@@ -230,25 +235,37 @@ class OrderBookSimulator:
         return web.json_response(self.fakeOrderBook.updateOrderBookUsingNextLTP())      
 
     async def websocketHandler(self, request):
-        ws = web.WebSocketResponse()
-        await ws.prepare(request)
-        if self.ws:
+        logging.info("webscoket request received..")
+        newWebSocekt = web.WebSocketResponse()
+        await newWebSocekt.prepare(request)
+        if self.webSocket:
             try:
-                await ws.close(code=1000, message='Goodbye!')
+                logging.info(f"closing existing websocket")
+                await self.webSocket.close(code=1000, message='Goodbye!')
             finally:
-                self.ws = None
+                self.webSocket = None
 
-        self.ws = ws
-        async for msg in ws:
-            if msg.type == aiohttp.WSMsgType.TEXT:
-                if msg.data == 'close':
-                    await ws.close()
-                else:
-                    await ws.send_str('some websocket message payload')
-            elif msg.type == aiohttp.WSMsgType.ERROR:
-                print('ws connection closed with exception %s' % ws.exception())
-        self.ws = None
-        return ws
+        self.webSocket = newWebSocekt
+        logging.debug(f"1 None == self.webSocket: {None == self.webSocket}")
+        logging.debug(f"3 None == newWebSocekt: {None == newWebSocekt}")
+        logging.debug(f"4 newWebSocekt: {newWebSocekt}")
+        try:
+            async for msg in self.webSocket:
+                logging.info(f"msg on websocket: {msg}")
+                logging.debug(f"2 None == self.webSocket: {None == self.webSocket}")
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    if msg.data == 'close':
+                        await self.webSocket.close()
+                    # else:
+                    #     await self.webSocket.send_str('some websocket message payload')
+                elif msg.type == aiohttp.WSMsgType.ERROR:
+                    logging.error('websocket connection closed with exception %s' % self.webSocket.exception())
+        except Exception as e:
+            logging.exception(f"WebSocket handler error: {e}")
+        finally:
+            logging.info("Disconnecting websocket..")
+        self.webSocket = None
+        return newWebSocekt
 
     def createRunner(self):
         app = web.Application()
@@ -263,11 +280,9 @@ class OrderBookSimulator:
         runner = self.createRunner()
         await runner.setup()
         site = web.TCPSite(runner, host, port)
-        print("before wsSenderLoop")
         await asyncio.gather(
-            self.wsSenderLoop(), 
+            self.webSocketSenderLoop(), 
             site.start())
-        print("after start")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OrderBookSimulator")

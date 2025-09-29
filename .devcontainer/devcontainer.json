@@ -15,8 +15,10 @@
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 
+	// "updateContentCommand": "echo 'wireshark-common wireshark-common/install-setuid boolean true' | sudo debconf-set-selections ; sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3-aiohttp libboost-all-dev clang-format wireshark",
+	"updateContentCommand": "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3-aiohttp libboost-all-dev clang-format tcpdump",
 	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "sudo apt-get update && sudo apt-get install -y python3-aiohttp libboost-all-dev clang-format",
+	"postCreateCommand": "",
 	
 	// Configure tool-specific properties.
 	"customizations": {

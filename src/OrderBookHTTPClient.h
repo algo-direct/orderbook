@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -14,14 +15,16 @@ class IncrementalUpdate;
 class HttpGetter;
 
 using OrderBookSnapshotCallback = std::function<void(OrderBookSnapshot&&)>;
+using ErrorCallback = std::function<void()>;
 
-class OrderBookWebClient {
+class OrderBookHTTPClient {
   OrderBookSnapshotCallback m_orderBookSnapshotCallback;
+  ErrorCallback m_errorCallback;
   std::string m_host;
   std::string m_port;
   std::string m_uri;
   int m_httpVersion;
-  std::unique_ptr<HttpGetter> m_httpGetter;
+  std::shared_ptr<HttpGetter> m_httpGetter;
 
   void jsonToOrderBookSnapshot(std::string_view json,
                                OrderBookSnapshot& orderBookSnapshot);
@@ -29,10 +32,10 @@ class OrderBookWebClient {
                                IncrementalUpdate& incrementalUpdate);
 
  public:
-  OrderBookWebClient(boost::asio::io_context& ioc, std::string_view host,
-                     std::string_view port, std::string_view uri,
-                     int httpVersion);
-  ~OrderBookWebClient();
-  void getSnapshot(OrderBookSnapshot& orderBookSnapshot);
-  void getIncrementalUpdate(IncrementalUpdate& incrementalUpdate);
+  OrderBookHTTPClient(OrderBookSnapshotCallback orderBookSnapshotCallback,
+                      ErrorCallback errorCallback, boost::asio::io_context& ioc,
+                      std::string_view host, std::string_view port,
+                      std::string_view uri);
+  ~OrderBookHTTPClient();
+  void run();
 };

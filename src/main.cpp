@@ -6,6 +6,7 @@
 #include <string>
 
 #include "OrderBookNetworkConnector.h"
+#include "logging.h"
 
 namespace po = boost::program_options;
 
@@ -29,11 +30,12 @@ int main(int argc, char* argv[]) {
   OrderBookNetworkConnector orderBookNetworkConnector(
       vm["host"].as<std::string>(), vm["port"].as<std::string>());
   orderBookNetworkConnector.run();
+  LOG_INFO("After orderBookNetworkConnector.run()\n");
 
   // asio::io_context ioc;
 
   // std::cout << "------------------ start" << std::endl;
-  // const auto httpVersion = 11;  // HTTP 1.1
+  // const auto DEFAULT_HTTP_CLIENT = 11;  // HTTP 1.1
   // auto onIncrementalUpdate =
   //     [&orderBook](IncrementalUpdate&& incrementalUpdate) {
   //       if (!orderBook) {
@@ -50,10 +52,10 @@ int main(int argc, char* argv[]) {
   // disconnectCallback,
   //                                     ioc, vm["host"].as<std::string>(),
   //                                     vm["port"].as<std::string>(), "/ws",
-  //                                     httpVersion);
-  // OrderBookWebClient orderBookWebClient(ioc, vm["host"].as<std::string>(),
+  //                                     DEFAULT_HTTP_CLIENT);
+  // OrderBookHTTPClient orderBookHTTPClient(ioc, vm["host"].as<std::string>(),
   //                                       vm["port"].as<std::string>(), "/ws",
-  //                                       httpVersion);
+  //                                       DEFAULT_HTTP_CLIENT);
 
   // OrderBookSnapshot orderBookSnapshot;
   // // orderBookWsClient.getSnapshot(orderBookSnapshot);
@@ -96,7 +98,7 @@ int main(int argc, char* argv[]) {
   // 18}); orderBook.applyIncrementalUpdate(std::move(incrementalUpdate));
   // orderBook.printTop10();
   // ioc.run();
-  std::cout << "------------------ end" << std::endl;
+  // std::cout << "------------------ end" << std::endl;
 
   return 0;
 }

@@ -14,4 +14,4 @@ namespace websocket = beast::websocket;
 namespace asio = boost::asio;
 using tcp = asio::ip::tcp;
 
-const auto httpVersion = 11;  // HTTP 1.1
+const auto DEFAULT_HTTP_CLIENT = 11;  // HTTP 1.1

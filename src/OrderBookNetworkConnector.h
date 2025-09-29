@@ -13,7 +13,7 @@ class io_context;
 class OrderBookSnapshot;
 class IncrementalUpdate;
 class OrderBookWsClient;
-class OrderBookWebClient;
+class OrderBookHTTPClient;
 class OrderBook;
 using OrderBookRef = std::unique_ptr<OrderBook>;
 
@@ -23,9 +23,9 @@ class OrderBookNetworkConnector {
   std::string m_host;
   std::string m_port;
   OrderBookRef m_orderBook;
-  bool m_isSnapshotReceived{false};
+  //   bool m_isSnapshotReceived{false};
   std::unique_ptr<OrderBookWsClient> m_orderBookWsClient;
-  std::unique_ptr<OrderBookWebClient> m_orderBookWebClient;
+  std::unique_ptr<OrderBookHTTPClient> m_orderBookHTTPClient;
 
   void reset();
   void onIncrementalUpdate(IncrementalUpdate&& incrementalUpdate);
