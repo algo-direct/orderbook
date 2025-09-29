@@ -1,7 +1,7 @@
 
 #include "OrderBookHTTPServer.h"
 
-#include <boost_http_server/boost_http_server.hpp>
+#include <boost_http_server/server.hpp>
 
 OrderBookHTTPServer::OrderBookHTTPServer(GetSnapshotHandler getSnapshotHandler,
                                          std::string_view host,

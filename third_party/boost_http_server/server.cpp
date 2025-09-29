@@ -12,7 +12,7 @@
 
 #include <utility>
 
-#include "boost_http_server.hpp"
+#include "server.hpp"
 
 namespace http {
 namespace server {
