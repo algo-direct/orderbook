@@ -19,3 +19,5 @@ target_link_libraries(OrderBook PRIVATE
     Boost::program_options
     boost_http_server
 )
+
+add_dependencies(OrderBook order_booker_web_content)

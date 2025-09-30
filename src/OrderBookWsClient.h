@@ -36,5 +36,6 @@ class OrderBookWsClient {
                     boost::asio::io_context& ioc, std::string_view host,
                     std::string_view port, std::string_view uri);
   void run();
+  void stop();
   ~OrderBookWsClient();
 };

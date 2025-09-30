@@ -19,6 +19,8 @@ find_package(Boost REQUIRED
     COMPONENTS program_options
 )
 
+
+add_subdirectory(order_booker_web_content)
 add_subdirectory(third_party)
 add_subdirectory(src)
 

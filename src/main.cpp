@@ -1,7 +1,9 @@
 #include <boost/program_options.hpp>
+#include <filesystem>
 #include <iostream>
 #include <ranges>
 #include <string>
+#include <thread>
 
 #include "OrderBookHTTPServer.h"
 #include "OrderBookNetworkConnector.h"
@@ -12,20 +14,21 @@ namespace po = boost::program_options;
 
 int main(int argc, char* argv[]) {
   po::options_description desc("Allowed options");
-  desc.add_options()("help", "produce help message")(
-      "host", po::value<std::string>()->default_value("127.0.0.1"),
-      "Hostname of OrderBook Feed Server or Simulation")  //
+  desc.add_options()                    //
+      ("help", "produce help message")  //
+      ("host", po::value<std::string>()->default_value("0.0.0.0"),
+       "Hostname of OrderBook Feed Server or Simulation")  //
       ("port", po::value<std::string>()->default_value("40000"),
        "Port nuumber of OrderBook Feed Server or Simulation")  //
       ("reconnect_delay", po::value<int>()->default_value(2000),
        "Delay in milliseconds before reconnect to OrderBook Feed Server or "
        "Simulation "
        "after having connection issues.")  //
-      ("http_server_port", po::value<int>()->default_value(0),
+      ("http_server_port", po::value<int>()->default_value(9090),
        "Optional, use as http server port to server OrderBook, "
        "if 0 value is provided then it will not start as http server.")  //
       ("http_doc_dir",
-       po::value<std::string>()->default_value("order_booker_web_content"),
+       po::value<std::string>()->default_value("../order_booker_web_content"),
        "Top dir path to be used for serveing files over http.");
 
   po::variables_map vm;
@@ -70,9 +73,14 @@ int main(int argc, char* argv[]) {
   bool runAsHTTPServer = httpServerPort > 0;
   bool useLock = runAsHTTPServer;
 
+  std::filesystem::path currentPath = std::filesystem::current_path();
+  // Print the current working directory
+  LOG_INFO("Running from working directory: " << currentPath);
+
   OrderBookNetworkConnector orderBookNetworkConnector(host, port,
                                                       reconnectDelay, useLock);
 
+  std::jthread httpServerThread;  // not started yet
   std::unique_ptr<OrderBookHTTPServer> m_orderBookHTTPServer;
   if (runAsHTTPServer) {
     m_orderBookHTTPServer = std::make_unique<OrderBookHTTPServer>(
@@ -80,10 +88,10 @@ int main(int argc, char* argv[]) {
           // callback hit by http server to get snapshot
           return orderBookNetworkConnector.getSnapshot();
         },
-        host, port, httpDocDir);
+        host, std::to_string(httpServerPort), httpDocDir);
+    httpServerThread = std::jthread([&]() { m_orderBookHTTPServer->run(); });
   }
   orderBookNetworkConnector.run();
-  LOG_INFO("After orderBookNetworkConnector.run()\n");
 
   // asio::io_context ioc;
 

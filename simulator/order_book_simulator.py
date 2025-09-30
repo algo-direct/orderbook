@@ -215,7 +215,7 @@ class OrderBookSimulator:
     async def webSocketSenderLoop(self):
         while True:
             # logging.debug("sleeping..")
-            await asyncio.sleep(2)
+            await asyncio.sleep(10)
             # logging.debug("running..")
             try:
                 delta = self.fakeOrderBook.updateOrderBookUsingNextLTP()

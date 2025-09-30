@@ -75,6 +75,13 @@
         "future": "cpp",
         "typeindex": "cpp",
         "set": "cpp",
-        "strstream": "cpp"
+        "strstream": "cpp",
+        "bitset": "cpp",
+        "cfenv": "cpp",
+        "coroutine": "cpp",
+        "unordered_set": "cpp",
+        "regex": "cpp",
+        "fstream": "cpp",
+        "stdfloat": "cpp"
     }
 }

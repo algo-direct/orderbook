@@ -1,5 +1,6 @@
 #pragma once
 
+#include <boost/asio.hpp>
 #include <functional>
 #include <memory>
 #include <string>
@@ -26,6 +27,7 @@ class OrderBookNetworkConnector {
   int m_reconnectDelay;
   SpinLock m_spinLock;
   bool m_snapshotReceived;
+  boost::asio::signal_set m_signals;
   OrderBookRef m_orderBook;
   //   bool m_isSnapshotReceived{false};
   std::unique_ptr<OrderBookWsClient> m_orderBookWsClient;

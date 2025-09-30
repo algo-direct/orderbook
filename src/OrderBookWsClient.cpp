@@ -20,6 +20,7 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
   std::string m_port;
   std::string m_uri;
   std::string m_text;
+  bool m_stopFlag;
 
   tcp::resolver m_resolver;
   websocket::stream<beast::tcp_stream> m_tcpStream;
@@ -31,10 +32,16 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
                            std::string_view host, std::string_view port,
                            std::string_view uri)
       : m_dataCallback{dataCallback},
-        m_disconnectCallback{disconnectCallback},
+        m_disconnectCallback{[&]() {
+          if (m_stopFlag) {
+            return;
+          }
+          disconnectCallback();
+        }},
         m_host{host},
         m_port{port},
         m_uri{uri},
+        m_stopFlag{false},
         m_resolver{asio::make_strand(ioc)},
         m_tcpStream{asio::make_strand(ioc)} {}
 
@@ -151,11 +158,6 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
     m_tcpStream.async_read(buffer,
                            beast::bind_front_handler(&WebSocketClient::onRead,
                                                      shared_from_this()));
-
-    // // Close the WebSocket connection
-    // m_tcpStream.async_close(websocket::close_code::normal,
-    //                         beast::bind_front_handler(&WebSocketClient::onClose,
-    //                                                   shared_from_this()));
   }
 
   void onClose(beast::error_code ec) {
@@ -165,6 +167,18 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
       return;
     }
     LOG_INFO("at close buffer size is: " << buffer.data().size());
+  }
+
+  void stop() {
+    // Close the WebSocket connection
+    if (m_stopFlag) {
+      return;
+    }
+    LOG_INFO("closing");
+    m_stopFlag = true;
+    m_tcpStream.async_close(websocket::close_code::normal,
+                            beast::bind_front_handler(&WebSocketClient::onClose,
+                                                      shared_from_this()));
   }
 };
 
@@ -198,6 +212,8 @@ void OrderBookWsClient::run() {
   LOG_INFO("Running OrderBookWsClient");
   m_webSocketClient->run(m_subscriptionRequestJson);
 }
+
+void OrderBookWsClient::stop() { m_webSocketClient->stop(); }
 
 void OrderBookWsClient::jsonToIncrementalUpdate(
     std::string_view json, IncrementalUpdate& incrementalUpdate) {

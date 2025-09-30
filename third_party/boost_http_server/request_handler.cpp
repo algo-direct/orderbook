@@ -11,6 +11,7 @@
 #include "request_handler.hpp"
 
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
 
@@ -55,17 +56,25 @@ void request_handler::handle_request(const request& req, reply& rep) {
 
   // Open the file to send back.
   std::string full_path = doc_root_ + request_path;
+  std::cout << "full_path: " << full_path << std::endl;
   std::ifstream is(full_path.c_str(), std::ios::in | std::ios::binary);
-  if (!is) {
-    // rep = reply::stock_reply(reply::not_found);
+  if (extension == "api") {
     try {
+      std::cout << "serving api " << request_path << std::endl;
       const std::string json = m_requestHandler(request_path, req, rep);
       rep.content.append(json.c_str(), json.size());
+      extension = "json";
     } catch (...) {
       rep = reply::stock_reply(reply::not_found);
       return;
     }
   } else {
+    std::cout << "serving file " << full_path << std::endl;
+    if (!is) {
+      rep = reply::stock_reply(reply::not_found);
+      std::cout << "file " << full_path << " not found." << std::endl;
+      return;
+    }
     // Fill out the reply to be sent to the client.
     rep.status = reply::ok;
     char buf[512];

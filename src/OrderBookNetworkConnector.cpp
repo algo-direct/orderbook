@@ -1,6 +1,7 @@
 #include "OrderBookNetworkConnector.h"
 
 #include <chrono>
+#include <format>
 #include <thread>
 
 #include "AsyncIOHeaders.h"
@@ -19,7 +20,21 @@ OrderBookNetworkConnector::OrderBookNetworkConnector(std::string_view host,
       m_port{port},
       m_reconnectDelay{reconnectDelay},
       m_spinLock{!useLock},
-      m_snapshotReceived{false} {}
+      m_snapshotReceived{false},
+      m_signals(*m_ioc) {
+  m_signals.add(SIGINT);
+  m_signals.add(SIGTERM);
+#if defined(SIGQUIT)
+  m_signals.add(SIGQUIT);
+#endif  // defined(SIGQUIT)
+
+  m_signals.async_wait([this](boost::system::error_code ec, int signal) {
+    LOG_INFO(std::format("Received signal: {}, ec: {}", signal, ec.message()));
+    if (!!m_orderBookWsClient) {
+      m_orderBookWsClient->stop();
+    }
+  });
+}
 
 void OrderBookNetworkConnector::reset() {
   LOG_INFO("Resetting..");

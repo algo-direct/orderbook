@@ -8,11 +8,11 @@
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 
+#include "server.hpp"
+
 #include <signal.h>
 
 #include <utility>
-
-#include "server.hpp"
 
 namespace http {
 namespace server {
@@ -37,6 +37,14 @@ server::server(const std::string& address, const std::string& port,
 
   // Open the acceptor with the option to reuse the address (i.e. SO_REUSEADDR).
   boost::asio::ip::tcp::resolver resolver(io_context_);
+
+  // boost::asio::ip::tcp::endpoint endpoint(
+  //   // boost::asio::ip::address(
+  //   // boost::asio::ip::address_v4::from_string(address)),
+  //    boost::asio::ip::tcp::v4(), std::stoi(port));
+  // // boost::asio::ip::tcp::endpoint endpoint =
+  // //     *resolver.resolve(address, port).begin();
+
   boost::asio::ip::tcp::endpoint endpoint =
       *resolver.resolve(address, port).begin();
   acceptor_.open(endpoint.protocol());
