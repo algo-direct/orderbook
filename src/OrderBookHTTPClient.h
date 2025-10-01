@@ -28,8 +28,6 @@ class OrderBookHTTPClient {
 
   void jsonToOrderBookSnapshot(std::string_view json,
                                OrderBookSnapshot& orderBookSnapshot);
-  void jsonToIncrementalUpdate(std::string_view json,
-                               IncrementalUpdate& incrementalUpdate);
 
  public:
   OrderBookHTTPClient(OrderBookSnapshotCallback orderBookSnapshotCallback,
@@ -38,4 +36,5 @@ class OrderBookHTTPClient {
                       std::string_view uri);
   ~OrderBookHTTPClient();
   void run();
+  void stop();
 };

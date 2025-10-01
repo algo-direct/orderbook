@@ -102,6 +102,11 @@ class HttpGetter : public std::enable_shared_from_this<HttpGetter> {
     m_dataCallback({static_cast<const char*>(m_httpResponse.body().data()),
                     m_httpResponse.body().size()});
 
+    stop();
+  }
+
+  void stop() {
+    beast::error_code ec;
     // Gracefully close the socket
     m_stream.socket().shutdown(tcp::socket::shutdown_both, ec);
 
@@ -124,15 +129,36 @@ OrderBookHTTPClient::OrderBookHTTPClient(
       m_httpGetter{std::make_shared<HttpGetter>(
           ioc,
           [&](std::string_view jsonData) {
-            OrderBookSnapshot orderBookSnapshot;
-            jsonToOrderBookSnapshot(jsonData, orderBookSnapshot);
-            m_orderBookSnapshotCallback(std::move(orderBookSnapshot));
+            try {
+              try {
+                LOG_INFO("Snapshot received: " << jsonData.data());
+                OrderBookSnapshot orderBookSnapshot;
+                jsonToOrderBookSnapshot(jsonData, orderBookSnapshot);
+                m_orderBookSnapshotCallback(std::move(orderBookSnapshot));
+              } catch (const std::exception& ex) {
+                LOG_ERROR(
+                    "Failed to process message received from http, exception: "
+                    << ex.what());
+                LOG_INFO("message received from websocket:" << jsonData);
+                m_errorCallback();
+              } catch (...) {
+                LOG_ERROR(
+                    "Unknown exception, Failed to process message received "
+                    "from http");
+                LOG_INFO("message received from websocket: : " << jsonData);
+                m_errorCallback();
+              }
+            } catch (...) {
+              m_errorCallback();
+            }
           },
           m_errorCallback)} {}
 
 OrderBookHTTPClient::~OrderBookHTTPClient() = default;
 
 void OrderBookHTTPClient::run() { m_httpGetter->run(m_host, m_port, m_uri); };
+
+void OrderBookHTTPClient::stop() { m_httpGetter->stop(); }
 
 void OrderBookHTTPClient::jsonToOrderBookSnapshot(
     std::string_view json, OrderBookSnapshot& orderBookSnapshot) {

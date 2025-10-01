@@ -1,51 +1,12 @@
-<!DOCTYPE html>
-<html>
+import requests
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="style.css">
-    <title>BTC-USDT | Order Book</title>
-    <!-- <style>
-        table,
-        th,
-        td {
-            border: 1px solid black;
-            border-collapse: collapse;
-            /* Optional: Makes borders single line */
-        }
+url = "https://api.kucoin.com/api/v3/market/orderbook/level2?symbol=BTC-USDT"
 
-        th,
-        td {
-            padding: 8px;
-            /* Optional: Adds spacing inside cells */
-            text-align: left;
-            /* Optional: Aligns text to the left */
-        }
-    </style> -->
-</head>
+payload={}
+headers = {}
 
-<body>
-    <!-- <button id="theme-toggle">Toggle Dark Mode</button> -->
-    <h1>BTC-USDT | Order Book</h1>
+response = requests.request("GET", url, headers=headers, data=payload)
 
-      <div class="grid-container">
-        <div class="grid-item">Box 1</div>
-        <div class="grid-item">Box 2</div>
-        <div class="grid-item">Box 3</div>
-        <div class="grid-item">Box 4</div>
-    </div>
-    <!-- <table>
-        <tr>
-            <th>Bids</th>
-            <th>Asks</th>
-        </tr>
-        <tr>
-            <td>Alice</td>
-            <td>30</td>
-        </tr>
-    </table> -->
-<script src="main.js"></script>
-</body>
+print(response.text)
 
-</html>
+logging.info(f"len(removedBids): {len(removedBids)} len(updatedBids): {len(updatedBids)} len(removedBids): {len(addedBids)} ")

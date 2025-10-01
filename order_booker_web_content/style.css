@@ -1,31 +1,101 @@
 .dark-mode {
     background-color: #1a1a1a;
-    color: #f0f0f0;
-    font-size: 20px;
-}
-
-button {
-    background-color: #1a1a1a;
-    color: #f0f0f0;
-    font-size: 20px;
+    color: #f0f0f0;    
 }
 
 .light-mode {
     background-color: #ffffff;
-    color: #333333;
-    font-size: 24px;
+    color: black;
 }
 
-.grid-container {
+.ob-container {
     display: grid;
     /*grid-template-columns: 1fr 1fr;*/
     grid-template-rows: auto auto;
     /*gap: 10px;*/
     width: 100%;
+    grid-template-columns: 1fr 1fr;
+     /* grid-template-rows: auto 100px;    */
+    
+    border: 1px solid chartreuse;
 }
 
-.grid-item {
-    border: 1px solid black;
-    padding: 20px;
+.ob-level {
+    display: grid;
+    width: 100%;
+    grid-template-columns: 1fr 1fr;
+}
+
+
+.ob-side {    
+    padding: 1px;
     text-align: center;
+    border: 2px solid blue;
+}
+
+.ob-side-buy {    
+    padding: 1px;
+    text-align: center;
+    border: 1px solid green;
+}
+
+
+.ob-side-sell {    
+    padding: 1px;
+    text-align: center;
+    border: 1px solid red;
+}
+
+.ob-header {    
+    padding: 1px;
+    text-align: center;
+    border: 1px solid cyan;
+}
+
+.ob-side-buy > .ob-level {    
+    padding: 1px;
+    text-align: center;
+    border: 1px solid greenyellow;
+}
+
+.ob-side-sell  > .ob-level {    
+    padding: 1px;
+    text-align: center;
+    border: 1px solid coral;
+}
+
+/* Define the base color using HSL values on the parent element */
+.color-shades {
+  --base-hue: 240; /* Blue */
+  --base-saturation: 80%;
+  --base-lightness: 50%;
+}
+
+/* Style the children using nth-child and a CSS variable */
+/* .color-shades div {
+  padding: 1rem;
+  color: white;
+  margin-bottom: 5px;
+  text-align: center;
+} */
+
+/* Adjust the lightness for each child */
+.color-shades div:nth-child(1) {
+  background-color: hsl(var(--base-hue), var(--base-saturation), 85%);
+}
+
+.color-shades div:nth-child(2) {
+  background-color: hsl(var(--base-hue), var(--base-saturation), 70%);
+}
+
+.color-shades div:nth-child(3) {
+  background-color: hsl(var(--base-hue), var(--base-saturation), 55%);
+}
+
+.color-shades div:nth-child(4) {
+  background-color: hsl(var(--base-hue), var(--base-saturation), 40%);
+}
+
+.color-shades div:nth-child(5) {
+  background-color: hsl(var(--base-hue), var(--base-saturation), 25%);
 }

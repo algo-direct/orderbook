@@ -45,7 +45,7 @@ class FakeOrderBook:
         bestBid = self.ltp - random.uniform(self.spreadRange[0], self.spreadRange[0])
         bestAsk = self.ltp + random.uniform(self.spreadRange[0], self.spreadRange[0])
         bids = [bestBid]
-        bids.extend([ bestBid - level for level in self.generateRandomPriceLevels(numLevels = self.maxLevels, reverseSort=True)])
+        bids.extend([ bestBid - level for level in self.generateRandomPriceLevels(numLevels = self.maxLevels)])
         asks = [bestAsk]
         asks.extend([ bestAsk + level for level in self.generateRandomPriceLevels(numLevels = self.maxLevels)])
         while len(bids) or len(asks):
@@ -66,9 +66,8 @@ class FakeOrderBook:
                     ,self.sizeDecimalPlaces)
             levels.append([nextPriceLevel, nextSize])
         
-        self.asks = self.asks[:self.maxLevels]
-        self.bids = self.bids[:self.maxLevels]
         self.timestamp = getMillisecondsSinceEpoch()
+        logging.info(f"getSpanshot: {self.getSpanshot()}")
     
     def getSpanshot(self):
         return {
@@ -90,9 +89,10 @@ class FakeOrderBook:
             self.generateFirstRandomSpanshot()
             self.sequence = self.sequence + originalSequence
     
-    def generateRandomPriceLevels(self, numLevels, reverseSort = False):
+    def generateRandomPriceLevels(self, numLevels, reverseSort = False):        
         alpha = 0.1
         deltas = []
+        if numLevels < 1: return deltas
         for _ in range(numLevels):
             paretoRandom = random.paretovariate(alpha)
             scaledValue = ((paretoRandom - 1) / (100 - 1)) * (100 - 1) + 1
@@ -103,8 +103,10 @@ class FakeOrderBook:
         return deltas
 
     def updateOrderBookUsingNextLTP(self):
+        logging.info(f"start len(self.asks): {len(self.asks)} len(self.bids): {len(self.bids)}")
         self.updateNextLTP()
-        sequenceStart = self.sequence + 1        
+        sequenceStart = self.sequence + 1
+        
 
         nextBestBid = utils.truncate(
             self.ltp - random.uniform(self.spreadRange[0], self.spreadRange[0]),
@@ -131,16 +133,17 @@ class FakeOrderBook:
                     removedBids.append([str(bid), str(size), str(self.sequence)])
                 else:
                     break
-            self.bids = self.bids[sequenceStart - self.sequence + 1:] # remove from the top
+            self.bids = self.bids[len(removedBids):] # remove from the top
         elif lastBestAsk < nextBestAsk:
-            # need to removed some Bid levels
+            # need to removed some Ask levels
             for ask, size in self.asks:
-                if ask > nextBestBid:
+                if ask <= nextBestAsk:
                     self.sequence += 1
                     size = 0
                     removedAsks.append([str(ask), str(size), str(self.sequence)])
-            self.asks = self.asks[sequenceStart - self.sequence + 1:] # remove from the top
+            self.asks = self.asks[len(removedAsks):] # remove from the top
 
+        logging.info(f"remov len(self.asks): {len(self.asks)} len(self.bids): {len(self.bids)}")
         # ------------ Add best bids and best asks levels ------------
         self.bids = [
             [nextBestBid, utils.truncate(
@@ -156,6 +159,36 @@ class FakeOrderBook:
             ]
         ] + self.asks
 
+        logging.info(f"add 1 len(self.asks): {len(self.asks)} len(self.bids): {len(self.bids)}")
+        logging.info(f"len(removedAsks): {len(removedAsks)} len(removedBids): {len(removedBids)}")
+
+        def removeExtraLevels(alreadyRemoved, levels):
+            logging.info(f"len(levels): {len(levels)} , self.maxLevels: {self.maxLevels}")
+            if len(levels) <= self.maxLevels: return
+            count = len(levels) - self.maxLevels
+            logging.info(f"count: {count}")
+            if  len(levels) < 1 and count < 1: return
+            for i in range(count):                
+                idx = len(levels) - 1
+                priceToRemoved = levels[idx][0]
+                levelAlreadyRemoved = False
+                for alreadyRemovedLevel in alreadyRemoved:
+                    if alreadyRemovedLevel[0] != priceToRemoved:
+                        levelAlreadyRemoved = True
+                        break
+                    if idx == 0: break
+                    idx -= 1
+                if not levelAlreadyRemoved:
+                    del levels[idx]
+                    self.sequence += 1
+                    size = 0
+                    alreadyRemoved.append([str(priceToRemoved), str(size), str(self.sequence)])
+        
+        removeExtraLevels(removedBids, self.bids)
+        removeExtraLevels(removedAsks, self.asks)
+
+        logging.info(f"rm ex len(self.asks): {len(self.asks)} len(self.bids): {len(self.bids)}")
+
         # ------------ Update order size of random levels of bids and asks ------------
 
         updatedBids = []
@@ -164,7 +197,7 @@ class FakeOrderBook:
         updateSequenceStart = self.sequence + 1
 
         def updateRandomLevels(levels, updates):
-            levelsToUpdate = set([int(index) for index in  self.generateRandomPriceLevels(numLevels = self.maxLevels)])
+            levelsToUpdate = set([int(index) for index in self.generateRandomPriceLevels(numLevels = self.maxLevels)])
             for index in levelsToUpdate:
                 if index < 1: continue
                 if index >= len(levels): break
@@ -173,11 +206,13 @@ class FakeOrderBook:
                     self.sizeDecimalPlaces
                 )
                 levels[index][1] = newSize
-                self.sequence += 1  
+                self.sequence += 1
                 updates.append([str(levels[index][0]), str(newSize)])
 
         updateRandomLevels(self.bids, updatedBids)
         updateRandomLevels(self.asks, updatedAsks)
+
+        logging.info(f"updat len(self.asks): {len(self.asks)} len(self.bids): {len(self.bids)}")
         sequenceEnd = self.sequence
         randomSequences = list(range(updateSequenceStart, sequenceEnd + 1))
         random.shuffle(randomSequences)
@@ -187,6 +222,43 @@ class FakeOrderBook:
         for update in updatedAsks:
             update.append(str(randomSequences.pop(0)))
 
+        # add more levels if still can
+        worstBid = self.bids[-1][0]
+        worstAsk = self.asks[-1][0]
+
+        addedBids = []
+        addedAsks = []
+        bids = [ worstBid - (4 * level) for level in self.generateRandomPriceLevels(numLevels = self.maxLevels)]
+        asks = [ worstAsk + (4 * level) for level in self.generateRandomPriceLevels(numLevels = self.maxLevels)]
+        while len(bids) or len(asks):
+            bidOrAsk = random.choice(["bid", "ask"])
+            levels = None
+            if bidOrAsk == "bid":
+                if not len(bids): continue
+                nextPriceLevel = bids.pop(0)
+                levels = self.bids
+            else:
+                if not len(asks): continue
+                nextPriceLevel = asks.pop(0)
+                levels = self.asks
+            if len(levels) >= self.maxLevels: continue
+            self.sequence += 1
+            nextPriceLevel = utils.truncate(nextPriceLevel, self.priceDecimalPlaces)
+            nextSize = utils.truncate(
+                random.uniform(self.orderSizeRange[0], self.orderSizeRange[1])
+                    ,self.sizeDecimalPlaces)
+            levels.append([nextPriceLevel, nextSize])
+            if bidOrAsk == "bid":
+                addedBids.append([str(nextPriceLevel), str(nextSize), str(self.sequence)])
+            else:
+                addedAsks.append([str(nextPriceLevel), str(nextSize), str(self.sequence)])
+
+        sequenceEnd = self.sequence
+        logging.info(f"add   len(self.asks): {len(self.asks)} len(self.bids): {len(self.bids)}")
+        logging.info(f"len(removedAsks): {len(removedAsks)} len(updatedAsks): {len(updatedAsks)} len(addedAsks): {len(addedAsks)} ")
+        logging.info(f"len(removedBids): {len(removedBids)} len(updatedBids): {len(updatedBids)} len(removedBids): {len(addedBids)} ")
+        changedAsks = removedAsks + updatedAsks + addedAsks
+        changedBids = removedBids + updatedBids + addedBids
         self.timestamp = getMillisecondsSinceEpoch()
         orderbookIncrement = {
             "topic": "/market/level2:BTC-USDT",
@@ -194,8 +266,8 @@ class FakeOrderBook:
             "subject": "trade.l2update",
             "data": {
                     "changes": {
-                        "asks": removedAsks + updatedAsks,
-                        "bids": removedBids + updatedBids
+                        "asks": changedAsks,
+                        "bids": changedBids
                     },
                     "sequenceEnd": sequenceEnd,
                     "sequenceStart": sequenceStart,
@@ -203,6 +275,9 @@ class FakeOrderBook:
                     "time": self.timestamp
                 }
         }
+        # logging.info(f"orderbookIncrement: changedAsks {len(changedAsks)}  changedBids {len(changedBids)}") # {orderbookIncrement}")
+        logging.info(f"getSpanshot       : \n self.asks {len(self.asks)}  self.bids {len(self.bids)} \n")
+        logging.info(f"getSpanshot       : {self.getSpanshot()}")
         return orderbookIncrement    
 
 class OrderBookSimulator:
@@ -211,24 +286,27 @@ class OrderBookSimulator:
         self.webSocket = None
         self.fakeOrderBook = FakeOrderBook()
         self.fakeOrderBook.generateFirstRandomSpanshot()
+        self.lastIncrementalUpdate = None
+
+    async def sendIncrementalUpdate(self):
+        try:
+            if None != self.lastIncrementalUpdate and None != self.webSocket:
+                logging.debug("sending data on websocket")                
+                await self.webSocket.send_json(self.lastIncrementalUpdate)
+        except Exception as ex:
+            logging.exception(f"Exception: {ex}")
+        finally:
+            pass
+
 
     async def webSocketSenderLoop(self):
         while True:
-            # logging.debug("sleeping..")
-            await asyncio.sleep(10)
-            # logging.debug("running..")
-            try:
-                delta = self.fakeOrderBook.updateOrderBookUsingNextLTP()
-                # delta = { "dd": "yy "}
-                # logging.debug(f"running, not self.webSocket: {not self.webSocket}")
-                # logging.debug(f"running, None == self.webSocket: {None == self.webSocket}")                
-                if None != self.webSocket:
-                    logging.debug("sending data on websocket")                
-                    await self.webSocket.send_json(delta)
-            finally:
-                pass
+            self.lastIncrementalUpdate = self.fakeOrderBook.updateOrderBookUsingNextLTP()
+            await self.sendIncrementalUpdate()
+            await asyncio.sleep(0.4)
 
     async def snapshotHandler(self, request):
+        await asyncio.sleep(10)
         return web.json_response(self.fakeOrderBook.getSpanshot())
     
     async def generateIncrementHandler(self, request):
@@ -246,18 +324,16 @@ class OrderBookSimulator:
                 self.webSocket = None
 
         self.webSocket = newWebSocekt
-        logging.debug(f"1 None == self.webSocket: {None == self.webSocket}")
-        logging.debug(f"3 None == newWebSocekt: {None == newWebSocekt}")
-        logging.debug(f"4 newWebSocekt: {newWebSocekt}")
+        sentIncrementalUpdate = False
         try:
-            async for msg in self.webSocket:
-                logging.info(f"msg on websocket: {msg}")
-                logging.debug(f"2 None == self.webSocket: {None == self.webSocket}")
+            async for msg in self.webSocket:                
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     if msg.data == 'close':
                         await self.webSocket.close()
-                    # else:
-                    #     await self.webSocket.send_str('some websocket message payload')
+                    else:
+                        if not sentIncrementalUpdate:
+                            await self.sendIncrementalUpdate()
+                            sentIncrementalUpdate = True
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     logging.error('websocket connection closed with exception %s' % self.webSocket.exception())
         except Exception as e:

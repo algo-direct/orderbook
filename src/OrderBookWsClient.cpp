@@ -14,6 +14,7 @@
 #include "logging.h"
 
 class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
+  asio::io_context& m_ioc;
   DataCallback m_dataCallback;
   DisconnectCallback m_disconnectCallback;
   std::string m_host;
@@ -31,8 +32,9 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
                            DisconnectCallback disconnectCallback,
                            std::string_view host, std::string_view port,
                            std::string_view uri)
-      : m_dataCallback{dataCallback},
-        m_disconnectCallback{[&]() {
+      : m_ioc{ioc},
+        m_dataCallback{dataCallback},
+        m_disconnectCallback{[this, disconnectCallback]() {
           if (m_stopFlag) {
             return;
           }
@@ -55,6 +57,7 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
   }
 
   void onResolve(beast::error_code ec, tcp::resolver::results_type results) {
+    m_resolver.cancel();
     if (ec) {
       LOG_ERROR("resolve failed: " << ec.message());
       m_disconnectCallback();
@@ -164,18 +167,21 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
     LOG_INFO("closed, ec: " << ec);
     if (ec) {
       LOG_ERROR("Closing websocket connection failed: " << ec.message());
-      return;
     }
     LOG_INFO("at close buffer size is: " << buffer.data().size());
+    m_ioc.stop();
   }
 
-  void stop() {
+  void stop(bool withStopFlag = true) {
     // Close the WebSocket connection
+    LOG_INFO("closing withStopFlag: " << withStopFlag
+                                      << " m_stopFlag: " << m_stopFlag);
     if (m_stopFlag) {
       return;
     }
-    LOG_INFO("closing");
-    m_stopFlag = true;
+    if (withStopFlag) {
+      m_stopFlag = true;
+    }
     m_tcpStream.async_close(websocket::close_code::normal,
                             beast::bind_front_handler(&WebSocketClient::onClose,
                                                       shared_from_this()));
@@ -194,9 +200,31 @@ OrderBookWsClient::OrderBookWsClient(
       m_webSocketClient{std::make_shared<WebSocketClient>(
           ioc,
           [&](std::string_view jsonData) {
-            IncrementalUpdate incrementalUpdate;
-            jsonToIncrementalUpdate(jsonData, incrementalUpdate);
-            m_incrementalUpdateCallback(std::move(incrementalUpdate));
+            try {
+              try {
+                IncrementalUpdate incrementalUpdate;
+                jsonToIncrementalUpdate(jsonData, incrementalUpdate);
+                m_incrementalUpdateCallback(std::move(incrementalUpdate));
+              } catch (const std::exception& ex) {
+                LOG_ERROR(
+                    "Failed to process message received from websocket, "
+                    "exception: "
+                    << ex.what());
+                LOG_INFO("message received from websocket:" << jsonData);
+                bool withStopFlag = false;
+                m_webSocketClient->stop(withStopFlag);
+              } catch (...) {
+                LOG_ERROR(
+                    "Unknown exception, Failed to process message received "
+                    "from websocket");
+                LOG_INFO("message received from websocket: : " << jsonData);
+                bool withStopFlag = false;
+                m_webSocketClient->stop(withStopFlag);
+              }
+            } catch (...) {
+              bool withStopFlag = false;
+              m_webSocketClient->stop(withStopFlag);
+            }
           },
           disconnectCallback, host, port, uri)} {
   m_subscriptionRequestJson =
@@ -213,7 +241,13 @@ void OrderBookWsClient::run() {
   m_webSocketClient->run(m_subscriptionRequestJson);
 }
 
-void OrderBookWsClient::stop() { m_webSocketClient->stop(); }
+void OrderBookWsClient::stop() {
+  if (!m_webSocketClient) {
+    return;
+  }
+  m_webSocketClient->stop();
+  m_webSocketClient.reset();
+}
 
 void OrderBookWsClient::jsonToIncrementalUpdate(
     std::string_view json, IncrementalUpdate& incrementalUpdate) {
