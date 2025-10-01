@@ -21,7 +21,11 @@ OrderBookNetworkConnector::OrderBookNetworkConnector(std::string_view host,
       m_reconnectDelay{reconnectDelay},
       m_spinLock{!useLock},
       m_snapshotReceived{false},
-      m_signals(*m_ioc) {
+      m_signaledToStop{false},
+      m_disconnecting{false},
+      m_signals(*m_ioc) {}
+
+void OrderBookNetworkConnector::setupSignalHandler() {
   m_signals.add(SIGINT);
   m_signals.add(SIGTERM);
 #if defined(SIGQUIT)
@@ -30,16 +34,16 @@ OrderBookNetworkConnector::OrderBookNetworkConnector(std::string_view host,
 
   m_signals.async_wait([this](boost::system::error_code ec, int signal) {
     LOG_INFO(std::format("Received signal: {}, ec: {}", signal, ec.message()));
-    if (!!m_orderBookWsClient) {
-      m_orderBookWsClient->stop();
-    }
+    m_signaledToStop = true;
+    disconnect();
   });
 }
-
 void OrderBookNetworkConnector::reset() {
   LOG_INFO("Resetting..");
   SpinLockGaurd spinLockGaurd(m_spinLock);
+  setupSignalHandler();
   m_snapshotReceived = false;
+  m_disconnecting = false;
   m_orderBookWsClient.reset();
   m_orderBookHTTPClient.reset();
   m_orderBook = std::make_unique<OrderBook>();
@@ -49,13 +53,7 @@ void OrderBookNetworkConnector::reset() {
     onIncrementalUpdate(std::move(incrementalUpdate));
   };
 
-  auto disconnectCallback = [&]() {
-    LOG_INFO("Sleeping before reconnecting...");
-    std::this_thread::sleep_for(std::chrono::milliseconds(m_reconnectDelay));
-    LOG_INFO("Reconnecting...");
-    reset();
-    m_orderBookWsClient->run();
-  };
+  auto disconnectCallback = [this]() { disconnect(); };
   m_orderBookWsClient = std::make_unique<OrderBookWsClient>(
       incrementalUpdateCallback, disconnectCallback, *m_ioc, m_host, m_port,
       "/ws");
@@ -63,15 +61,42 @@ void OrderBookNetworkConnector::reset() {
   // response on websocket
 }
 
+void OrderBookNetworkConnector::disconnect() {
+  if (m_disconnecting) {
+    return;
+  }
+  LOG_INFO("disconnecting all TCP streams");
+  m_disconnecting = true;
+  if (!!m_orderBookWsClient) {
+    m_orderBookWsClient->stop();
+  }
+  if (!!m_orderBookHTTPClient) {
+    m_orderBookHTTPClient->stop();
+  }
+}
+
 void OrderBookNetworkConnector::run() {
   LOG_INFO("Running OrderBookNetworkConnector");
   reset();
-  m_orderBookWsClient->run();
-  m_ioc->run();
+  while (true) {
+    m_orderBookWsClient->run();
+    m_ioc->run();
+    if (m_signaledToStop) {
+      break;
+    }
+    LOG_INFO("Sleeping before reconnecting...");
+    std::this_thread::sleep_for(std::chrono::milliseconds(m_reconnectDelay));
+    LOG_INFO("Reconnecting...");
+    m_ioc->restart();
+    reset();
+  }
 }
 
 void OrderBookNetworkConnector::onIncrementalUpdate(
     IncrementalUpdate&& incrementalUpdate) {
+  if (m_disconnecting) {
+    return;
+  }
   LOG_TRACE("onIncrementalUpdate");
   {
     SpinLockGaurd spinLockGaurd(m_spinLock);
@@ -79,10 +104,10 @@ void OrderBookNetworkConnector::onIncrementalUpdate(
   }
   if (!m_snapshotReceived && !m_orderBookHTTPClient) {
     LOG_INFO("Creating OrderBookHTTPClient ..");
-    auto snapshotCallback = [&](OrderBookSnapshot&& orderBookSnapshot) {
+    auto snapshotCallback = [this](OrderBookSnapshot&& orderBookSnapshot) {
       onSnapshot(std::move(orderBookSnapshot));
     };
-    auto disconnectCallback = [&]() { reset(); };
+    auto disconnectCallback = [this]() { reset(); };
     m_orderBookHTTPClient = std::make_unique<OrderBookHTTPClient>(
         snapshotCallback, disconnectCallback, *m_ioc, m_host, m_port,
         "/snapshot");
@@ -92,6 +117,9 @@ void OrderBookNetworkConnector::onIncrementalUpdate(
 
 void OrderBookNetworkConnector::onSnapshot(
     OrderBookSnapshot&& orderBookSnapshot) {
+  if (m_disconnecting) {
+    return;
+  }
   LOG_INFO("Received snapshot");
   SpinLockGaurd spinLockGaurd(m_spinLock);
   m_orderBook->applySnapshot(std::move(orderBookSnapshot));
@@ -101,7 +129,7 @@ void OrderBookNetworkConnector::onSnapshot(
 
 std::string OrderBookNetworkConnector::getSnapshot() {
   OrderBook orderBook;
-  {
+  if (!m_disconnecting) {
     SpinLockGaurd spinLockGaurd(m_spinLock);
     if (!m_orderBook) {
       throw std::runtime_error("orderBook is being reset.");

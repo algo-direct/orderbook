@@ -27,13 +27,16 @@ class OrderBookNetworkConnector {
   int m_reconnectDelay;
   SpinLock m_spinLock;
   bool m_snapshotReceived;
+  bool m_disconnecting;
+  bool m_signaledToStop;
   boost::asio::signal_set m_signals;
   OrderBookRef m_orderBook;
-  //   bool m_isSnapshotReceived{false};
   std::unique_ptr<OrderBookWsClient> m_orderBookWsClient;
   std::unique_ptr<OrderBookHTTPClient> m_orderBookHTTPClient;
 
+  void setupSignalHandler();
   void reset();
+  void disconnect();
   void onIncrementalUpdate(IncrementalUpdate&& incrementalUpdate);
   void onSnapshot(OrderBookSnapshot&& orderBookSnapshot);
 

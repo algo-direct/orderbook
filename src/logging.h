@@ -1,13 +1,16 @@
 #pragma once
 
 #include <iostream>
+#include <thread>
+
 void printTimestamp(bool withNewLine = false);
 
 #define LOG_LINE(level, ...)                                        \
   do {                                                              \
     printTimestamp();                                               \
     std::cout << " " << level << __FILE__ << ":" << __LINE__ << " " \
-              << __VA_ARGS__ << std::endl;                          \
+              << std::this_thread::get_id() << " " << __VA_ARGS__   \
+              << std::endl;                                         \
   } while (false)
 
 #define ERROR_LEVEL 1

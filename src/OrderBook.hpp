@@ -95,6 +95,7 @@ class OrderBook {
     applyLevels(incrementalUpdate.asks, m_asks);
     m_lastUpdateTimestamp = incrementalUpdate.timestamp;
     m_sequence = incrementalUpdate.sequenceEnd;
+    printTop10();
     return true;
   }
 
