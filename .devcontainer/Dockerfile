@@ -21,3 +21,4 @@ RUN apt-get -y install --no-install-recommends python3-aiohttp python3-behave
 RUN apt-get -y install --no-install-recommends python3-pip
 RUN apt-get update
 RUN apt-get -y install --no-install-recommends python3-autopep8
+RUN cat /etc/profile.d/bashrc.sh >> /home/vscode/.bashrc
