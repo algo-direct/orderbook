@@ -1,0 +1,85 @@
+volumes:
+  shared_data:
+
+networks:
+  shared_network:
+    driver: bridge 
+
+services:
+  builder_service:
+    build:
+      context: .devcontainer
+      dockerfile: Dockerfile
+    image: base_image:latest
+    command: "true"
+
+  # Services that use the pre-built image
+  cpp_build_job:
+    image: base_image:latest
+    volumes:
+      - shared_data:/build
+      - .:/src_code:ro
+    command: bash -c "
+      cd /build &&
+      cmake /src_code  &&
+      make -j4
+      "
+    restart: "no"
+    depends_on:
+      - builder_service # Ensure the image is built before this service starts
+
+  orderbook:
+    image: base_image:latest
+    volumes:
+      - shared_data:/build
+    ports:
+      - 48022:48080
+    networks:
+      - shared_network
+    environment:
+      - BUILD_DIR=/build
+    command: bash -c "
+      cd /build/src  &&
+      ./OrderBook --host simulator
+      "
+    depends_on:
+      builder_service:
+        condition: service_completed_successfully
+      cpp_build_job:
+        condition: service_completed_successfully
+
+  simulator:
+    image: base_image:latest
+    volumes:
+      - shared_data:/build
+      - .:/src_code:ro
+    ports:
+      - 40000:40000
+    networks:
+      - shared_network
+    environment:
+      - BUILD_DIR=/build
+    command: bash -c "
+      cd /build  &&
+      python3 ./simulator/order_book_simulator.py 
+      "
+    depends_on:
+      builder_service:
+        condition: service_completed_successfully
+
+  intergration_tests:
+    image: base_image:latest
+    restart: "no"
+    volumes:
+      - shared_data:/build
+    networks:
+      - shared_network
+    environment:
+      - BUILD_DIR=/build
+    command: bash -c "
+      cd /build/integration_tests  &&
+      python3 main.py 
+      "
+    depends_on:
+      builder_service:
+        condition: service_completed_successfully

@@ -9,6 +9,9 @@
 const double PRICE_COMPARISION_TOLERANCE = 1e-12;
 const double SIZE_COMPARISION_TOLERANCE = 1e-12;
 
+const int SIZE_PRINT_PRECISION = 8;
+const int PRICE_PRINT_PRECISION = 7;
+
 using PriceType = double;
 using SizeType = double;
 using SequenceType = std::size_t;

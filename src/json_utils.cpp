@@ -1,5 +1,6 @@
 #include "json_utils.h"
 
+#include <format>
 #include <string>
 
 #include "OrderBook.hpp"
@@ -78,8 +79,10 @@ std::string JsonUtils::orderBookSnapshotToJson(const OrderBook& orderBook) {
   auto priceLevelSetter = [&](const auto& levels, auto& levelsJson) {
     for (const auto& bid : levels) {
       json levelJson = json::array();
-      levelJson.push_back(std::to_string(bid.second.price));
-      levelJson.push_back(std::to_string(bid.second.size));
+      levelJson.push_back(
+          std::format("{:.{}f}", bid.second.price, PRICE_PRINT_PRECISION));
+      levelJson.push_back(
+          std::format("{:.{}f}", bid.second.size, SIZE_PRINT_PRECISION));
       levelsJson.push_back(levelJson);
     }
   };

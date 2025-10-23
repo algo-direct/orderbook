@@ -52,6 +52,11 @@
     border: 1px solid cyan;
 }
 
+.ob-sub-header { 
+    text-align: center;
+    border: 1px solid cyan;
+}
+
 .ob-side-buy > .ob-level {    
     padding: 1px;
     text-align: center;
@@ -62,40 +67,4 @@
     padding: 1px;
     text-align: center;
     border: 1px solid coral;
-}
-
-/* Define the base color using HSL values on the parent element */
-.color-shades {
-  --base-hue: 240; /* Blue */
-  --base-saturation: 80%;
-  --base-lightness: 50%;
-}
-
-/* Style the children using nth-child and a CSS variable */
-/* .color-shades div {
-  padding: 1rem;
-  color: white;
-  margin-bottom: 5px;
-  text-align: center;
-} */
-
-/* Adjust the lightness for each child */
-.color-shades div:nth-child(1) {
-  background-color: hsl(var(--base-hue), var(--base-saturation), 85%);
-}
-
-.color-shades div:nth-child(2) {
-  background-color: hsl(var(--base-hue), var(--base-saturation), 70%);
-}
-
-.color-shades div:nth-child(3) {
-  background-color: hsl(var(--base-hue), var(--base-saturation), 55%);
-}
-
-.color-shades div:nth-child(4) {
-  background-color: hsl(var(--base-hue), var(--base-saturation), 40%);
-}
-
-.color-shades div:nth-child(5) {
-  background-color: hsl(var(--base-hue), var(--base-saturation), 25%);
 }

@@ -21,6 +21,8 @@ find_package(Boost REQUIRED
 
 
 add_subdirectory(order_booker_web_content)
+add_subdirectory(integration_tests)
+add_subdirectory(simulator)
 add_subdirectory(third_party)
 add_subdirectory(src)
 

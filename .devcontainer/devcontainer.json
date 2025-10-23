@@ -23,7 +23,8 @@
 		"extensions": [
 			"ms-vscode.cpptools",
 			"ms-vscode.cmake-tools",
-			"llvm-vs-code-extensions.vscode-clangd"
+			"llvm-vs-code-extensions.vscode-clangd",
+			"ms-azuretools.vscode-containers"
 		],
 		"settings": {
 			"terminal.integrated.defaultProfile.linux": "bash"

@@ -151,9 +151,9 @@ class WebSocketClient : public std::enable_shared_from_this<WebSocketClient> {
       return;
     }
 
-    LOG_INFO("Received data on webSocekt, buffer.data().size(): "
-             << buffer.data().size() << " "
-             << beast::make_printable(buffer.data()) << std::endl);
+    // LOG_INFO("Received data on webSocekt, buffer.data().size(): "
+    //          << buffer.data().size() << " "
+    //          << beast::make_printable(buffer.data()) << std::endl);
     m_dataCallback(
         {static_cast<const char*>(buffer.data().data()), buffer.size()});
     buffer.consume(buffer.size());

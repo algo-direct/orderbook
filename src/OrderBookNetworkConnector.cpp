@@ -84,7 +84,7 @@ void OrderBookNetworkConnector::run() {
     if (m_signaledToStop) {
       break;
     }
-    LOG_INFO("Sleeping before reconnecting...");
+    LOG_INFO("Sleeping before reconnecting..." << m_host << ":" << m_port);
     std::this_thread::sleep_for(std::chrono::milliseconds(m_reconnectDelay));
     LOG_INFO("Reconnecting...");
     m_ioc->restart();

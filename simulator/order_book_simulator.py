@@ -5,23 +5,15 @@ import argparse
 import random
 import json
 import time
+import queue
 import asyncio
 from aiohttp import web, WSCloseCode
 import aiohttp
 import logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-
-
-aiohttp_logger = logging.getLogger("aiohttp")
-aiohttp_logger.setLevel(logging.INFO)
-
+import os
 
 def getMillisecondsSinceEpoch():
     return int(round(time.time() * 1000))
-
 
 class FakeOrderBook:
     def __init__(self, priceDecimalPlaces=4, sizeDecimalPlaces=8, spreadRange=[0.01, 0.1], orderSizeRange=[0.0001, 1], maxLevels=100):
@@ -34,12 +26,102 @@ class FakeOrderBook:
         self.bids = []
         self.asks = []
         self.timestamp = getMillisecondsSinceEpoch()
+        logging.debug(f"os.getcwd(): {os.getcwd()}")
+        simeDataFile = "simulator/sim_data.json"
+        if not os.path.isfile(simeDataFile):
+            simeDataFile = "../simulator/sim_data.json"
+        self.marketData = json.load(open(simeDataFile))["close"]
 
-        self.marketData = json.load(open("simulator/sim_data.json"))["close"]
+
         self.index = 0  # index in self.marketData
         self.ltp = 0
 
-    def generateFirstRandomSpanshot(self):
+    def setSnapshot(self, data):
+        logging.debug(f"data: {data}")
+        self.sequence = int(data.get("sequence", 1))
+        self.timestamp = int(data.get("timestamp", getMillisecondsSinceEpoch()))
+        self.bids = [[float(priceAndSize[0]), float(priceAndSize[1])] for priceAndSize in data["bids"]]
+        self.asks = [[float(priceAndSize[0]), float(priceAndSize[1])] for priceAndSize in data["asks"]]
+        self.resetIncrementalData()
+
+    def resetIncrementalData(self):
+        self.updatedBids = []
+        self.updatedAsks = []
+        self.sequenceStart = self.sequence
+
+    def getIncrementalUpdateJson(self):
+        update = {
+            "topic": "/market/level2:BTC-USDT",
+            "type": "message",
+            "subject": "trade.l2update",
+            "data": {
+                    "changes": {
+                        "asks": self.updatedBids,
+                        "bids": self.updatedAsks
+                    },
+                "sequenceEnd": self.sequence,
+                "sequenceStart": self.sequenceStart,
+                "symbol": "BTC-USDT",
+                "time": self.timestamp
+            }
+        }
+        self.resetIncrementalData()
+        return update
+
+    def addLevel(self, data):
+        isBid = data["isBid"].lower() == "true"
+        price = float(data["price"])
+        size = int(data["size"])
+        levels = self.bids if isBid else self.asks
+        updatedLevels = self.updatedBids if isBid else self.updatedAsks
+        tmpLevels = []
+        tmpLevels.extend(levels)
+        levels.clear()
+        added = False
+        for priceAndSize in tmpLevels:
+            if added:
+                levels.append(priceAndSize)
+                continue
+            if price == priceAndSize[0]:
+                levels.append([price, size])
+                self.sequence += 1
+                updatedLevels.append([str(price), str(size), str(self.sequence)])
+                added = True
+            elif (isBid and price > priceAndSize[0]) or (not isBid and price < priceAndSize[0]):
+                levels.append([price, size])
+                levels.append(priceAndSize)
+                self.sequence += 1
+                updatedLevels.append([str(price), str(size), str(self.sequence)])
+                added = True
+            else:
+                levels.append(priceAndSize)
+        if added:
+            self.timestamp = data.get("timestamp", getMillisecondsSinceEpoch())
+        return added
+
+    def removeLevel(self, data):
+        isBid = data["isBid"].lower() == "true"
+        price = float(data["price"])
+        levels = self.bids if isBid else self.asks
+        updatedLevels = self.updatedBids if isBid else self.updatedAsks
+        tmpLevels = []
+        tmpLevels.extend(levels)
+        levels.clear()
+        removed = False
+        for priceAndSize in tmpLevels:
+            if removed:
+                levels.append(priceAndSize)
+                continue
+            if price == priceAndSize[0]:
+                self.sequence += 1
+                updatedLevels.append([str(price), "0", str(self.sequence)])
+                self.timestamp = data.get("timestamp", getMillisecondsSinceEpoch())
+                removed = True
+            else:
+                levels.append(priceAndSize)
+        return removed
+    
+    def generateFirstRandomSnapshot(self):
         self.updateNextLTP()
         self.sequence = 0
         bestBid = self.ltp - \
@@ -73,9 +155,9 @@ class FakeOrderBook:
             levels.append([nextPriceLevel, nextSize])
 
         self.timestamp = getMillisecondsSinceEpoch()
-        logging.info(f"getSpanshot: {self.getSpanshot()}")
+        logging.debug(f"snapshot: {self.getSnapshot()}")
 
-    def getSpanshot(self):
+    def getSnapshot(self):
         return {
             "code": "200000",
             "data": {
@@ -90,10 +172,8 @@ class FakeOrderBook:
         self.ltp = self.marketData[self.index]
         self.index += 1
         if self.index >= len(self.marketData):
-            self.index = 0
-            originalSequence = self.sequence
-            self.generateFirstRandomSpanshot()
-            self.sequence = self.sequence + originalSequence
+            return False
+        return True
 
     def generateRandomPriceLevels(self, numLevels, reverseSort=False):
         alpha = 0.1
@@ -111,9 +191,8 @@ class FakeOrderBook:
         return deltas
 
     def updateOrderBookUsingNextLTP(self):
-        logging.info(f"start len(self.asks): {
+        logging.debug(f"start len(self.asks): {
                      len(self.asks)} len(self.bids): {len(self.bids)}")
-        self.updateNextLTP()
         sequenceStart = self.sequence + 1
 
         nextBestBid = utils.truncate(
@@ -155,7 +234,7 @@ class FakeOrderBook:
                         [str(ask), str(size), str(self.sequence)])
             self.asks = self.asks[len(removedAsks):]  # remove from the top
 
-        logging.info(f"remov len(self.asks): {
+        logging.debug(f"remove len(self.asks): {
                      len(self.asks)} len(self.bids): {len(self.bids)}")
         # ------------ Add best bids and best asks levels ------------
         self.bids = [
@@ -170,18 +249,18 @@ class FakeOrderBook:
              ]
         ] + self.asks
 
-        logging.info(f"add 1 len(self.asks): {
+        logging.debug(f"add 1 len(self.asks): {
                      len(self.asks)} len(self.bids): {len(self.bids)}")
-        logging.info(f"len(removedAsks): {
+        logging.debug(f"len(removedAsks): {
                      len(removedAsks)} len(removedBids): {len(removedBids)}")
 
         def removeExtraLevels(alreadyRemoved, levels):
-            logging.info(f"len(levels): {len(levels)} , self.maxLevels: {
+            logging.debug(f"len(levels): {len(levels)} , self.maxLevels: {
                          self.maxLevels}")
             if len(levels) <= self.maxLevels:
                 return
             count = len(levels) - self.maxLevels
-            logging.info(f"count: {count}")
+            logging.debug(f"count: {count}")
             if len(levels) < 1 and count < 1:
                 return
             for i in range(count):
@@ -205,7 +284,7 @@ class FakeOrderBook:
         removeExtraLevels(removedBids, self.bids)
         removeExtraLevels(removedAsks, self.asks)
 
-        logging.info(f"rm ex len(self.asks): {
+        logging.debug(f"rm ex len(self.asks): {
                      len(self.asks)} len(self.bids): {len(self.bids)}")
 
         # ------------ Update order size of random levels of bids and asks ------------
@@ -235,7 +314,7 @@ class FakeOrderBook:
         updateRandomLevels(self.bids, updatedBids)
         updateRandomLevels(self.asks, updatedAsks)
 
-        logging.info(f"updat len(self.asks): {
+        logging.debug(f"update len(self.asks): {
                      len(self.asks)} len(self.bids): {len(self.bids)}")
         sequenceEnd = self.sequence
         randomSequences = list(range(updateSequenceStart, sequenceEnd + 1))
@@ -285,11 +364,11 @@ class FakeOrderBook:
                     [str(nextPriceLevel), str(nextSize), str(self.sequence)])
 
         sequenceEnd = self.sequence
-        logging.info(f"add   len(self.asks): {
+        logging.debug(f"add   len(self.asks): {
                      len(self.asks)} len(self.bids): {len(self.bids)}")
-        logging.info(f"len(removedAsks): {len(removedAsks)} len(updatedAsks): {
+        logging.debug(f"len(removedAsks): {len(removedAsks)} len(updatedAsks): {
                      len(updatedAsks)} len(addedAsks): {len(addedAsks)} ")
-        logging.info(f"len(removedBids): {len(removedBids)} len(updatedBids): {
+        logging.debug(f"len(removedBids): {len(removedBids)} len(updatedBids): {
                      len(updatedBids)} len(removedBids): {len(addedBids)} ")
         changedAsks = removedAsks + updatedAsks + addedAsks
         changedBids = removedBids + updatedBids + addedBids
@@ -309,26 +388,74 @@ class FakeOrderBook:
                 "time": self.timestamp
             }
         }
-        # logging.info(f"orderbookIncrement: changedAsks {len(changedAsks)}  changedBids {len(changedBids)}") # {orderbookIncrement}")
-        logging.info(f"getSpanshot       : \n self.asks {
-                     len(self.asks)}  self.bids {len(self.bids)} \n")
-        logging.info(f"getSpanshot       : {self.getSpanshot()}")
+        logging.debug(f"orderbookIncrement: changedAsks {len(changedAsks)}  changedBids {len(changedBids)}") # {orderbookIncrement}")
+        logging.debug(f"asks {len(self.asks)}  bids {len(self.bids)}")
         return orderbookIncrement
 
 
 class OrderBookSimulator:
 
-    def __init__(self):
+    def __init__(self, loop):
+        self.loop = loop
+        self.webSocket = None
+        self.pendingSnapshotRequestSignals = queue.Queue()
+
+    async def renewFakeOrderBook(self):
+        await self.disconnectWsImpl()
         self.webSocket = None
         self.fakeOrderBook = FakeOrderBook()
-        self.fakeOrderBook.generateFirstRandomSpanshot()
-        self.lastIncrementalUpdate = None
+        self.fakeOrderBook.generateFirstRandomSnapshot()
+        self.lastIncrementalUpdates = []
+        logging.info("renewed FakeOrderBook")
 
-    async def sendIncrementalUpdate(self):
+    async def sendIncrementalUpdateOnWebSocket(self):
         try:
-            if None != self.lastIncrementalUpdate and None != self.webSocket:
+            if self.lastIncrementalUpdates and None != self.webSocket:
                 logging.debug("sending data on websocket")
-                await self.webSocket.send_json(self.lastIncrementalUpdate)
+                for lastIncrementalUpdate in self.lastIncrementalUpdates:
+                    await self.webSocket.send_json(lastIncrementalUpdate)
+                self.lastIncrementalUpdates.clear()
+                return True
+        except Exception as ex:
+            logging.exception(f"Exception: {ex}")
+        finally:
+            return False
+    
+    async def sendIncrementalUpdate(self, request):
+        if self.fakeOrderBook:
+            self.lastIncrementalUpdates.append(self.fakeOrderBook.getIncrementalUpdateJson())
+        result = await self.sendIncrementalUpdateOnWebSocket()
+        return web.json_response({
+            "result" : result
+        })
+
+    async def disconnectWsImpl(self):
+        try:
+            if None != self.webSocket:
+                logging.debug("disconnecting websocket")
+                await self.webSocket.close()
+                return True
+        except Exception as ex:
+            logging.exception(f"Exception: {ex}")
+        finally:
+            return False
+    
+    async def disconnectWs(self, request):
+        result = await self.disconnectWsImpl()
+        return web.json_response({
+            "wasConnected" : result
+        })
+    
+    async def processPendingSnapshotRequests(self, request):
+        try:
+            pendingRequestsCount = 0
+            while not self.pendingSnapshotRequestSignals.empty():
+                signal = self.pendingSnapshotRequestSignals.get()
+                signal.set()
+                pendingRequestsCount += 1
+            return web.json_response({
+                "pendingRequestsCount" : pendingRequestsCount
+            })
         except Exception as ex:
             logging.exception(f"Exception: {ex}")
         finally:
@@ -336,16 +463,90 @@ class OrderBookSimulator:
 
     async def webSocketSenderLoop(self):
         while True:
-            self.lastIncrementalUpdate = self.fakeOrderBook.updateOrderBookUsingNextLTP()
-            await self.sendIncrementalUpdate()
+            if not self.passive and self.fakeOrderBook:
+                self.lastIncrementalUpdates.append(await self.updateOrderBook())
+                await self.sendIncrementalUpdateOnWebSocket()
             await asyncio.sleep(0.4)
 
+    async def isRunning(self, request):
+        return web.json_response({
+            "result": "running"
+        })
+    
     async def snapshotHandler(self, request):
-        await asyncio.sleep(10)
-        return web.json_response(self.fakeOrderBook.getSpanshot())
+        if self.passive:
+            signal = asyncio.Event()
+            self.pendingSnapshotRequestSignals.put(signal)
+            await signal.wait()
+        else:
+            await asyncio.sleep(1)
+        return web.json_response(self.fakeOrderBook.getSnapshot())
+
+    async def setSnapshot(self, request):
+        if not self.passive:
+            # only passive mode allowed to set snapshot
+            return web.json_response({
+                "result": "not allowed"
+            })
+        data = await request.json()
+        self.fakeOrderBook = FakeOrderBook()
+        self.fakeOrderBook.setSnapshot(data)
+        return web.json_response({
+            "result": "stored"
+        })
+    
+    async def setIncrementalUpdate(self, request):
+        if not self.passive:
+            # only passive mode allowed to set snapshot
+            return web.json_response({
+                "result": False,
+                "msg": "not allowed"
+            })
+        data = await request.json()
+        self.fakeOrderBook = FakeOrderBook()
+        self.fakeOrderBook.setSnapshot(data)
+        return web.json_response({
+            "result": True,
+            "msg": "stored",
+        })
+    
+    async def addLevel(self, request):
+        if not self.passive:
+            # only passive mode allowed to Add level
+            return web.json_response({
+                "result": False,
+                "msg": "not allowed"
+            })
+        data = await request.json()
+        return web.json_response({
+            "result": self.fakeOrderBook.addLevel(data),
+            "msg": "stored",
+            "sequence": str(self.fakeOrderBook.sequence)
+        })
+
+    async def removeLevel(self, request):
+        if not self.passive:
+            # only passive mode allowed to Add level
+            return web.json_response({
+                "result": False,
+                "msg": "not allowed"
+            })
+        data = await request.json()
+        return web.json_response({
+            "result": self.fakeOrderBook.removeLevel(data),
+            "msg": "stored",
+            "sequence": str(self.fakeOrderBook.sequence)
+        })
+
+    async def updateOrderBook(self):
+        if self.fakeOrderBook.updateNextLTP():
+            return self.fakeOrderBook.updateOrderBookUsingNextLTP()
+        await self.renewFakeOrderBook();
+        return self.fakeOrderBook.updateOrderBookUsingNextLTP()
 
     async def generateIncrementHandler(self, request):
-        return web.json_response(self.fakeOrderBook.updateOrderBookUsingNextLTP())
+        result = await self.updateOrderBook()
+        return web.json_response(result)
 
     async def websocketHandler(self, request):
         logging.info("webscoket request received..")
@@ -366,8 +567,8 @@ class OrderBookSimulator:
                     if msg.data == 'close':
                         await self.webSocket.close()
                     else:
-                        if not sentIncrementalUpdate:
-                            await self.sendIncrementalUpdate()
+                        if not sentIncrementalUpdate and not self.passive:
+                            await self.sendIncrementalUpdateOnWebSocket()
                             sentIncrementalUpdate = True
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     logging.error(
@@ -382,32 +583,54 @@ class OrderBookSimulator:
     def createRunner(self):
         app = web.Application()
         app.add_routes([
+            web.get('/isRunning',   self.isRunning),
             web.get('/snapshot',   self.snapshotHandler),
+            web.post('/setSnapshot',   self.setSnapshot),
+            web.post('/addLevel',   self.addLevel),
+            web.post('/removeLevel',   self.removeLevel),
             web.get('/generateIncrement',   self.generateIncrementHandler),
             web.get('/ws', self.websocketHandler),
+            web.get('/disconnectWs', self.disconnectWs),
+            web.get('/processPendingSnapshotRequests', self.processPendingSnapshotRequests),
+            web.get('/sendIncrementalUpdate', self.sendIncrementalUpdate),
         ])
         return web.AppRunner(app)
 
-    async def startServer(self, host, port):
+    async def startServer(self, host, port, passive):
+        self.passive = passive
+        await self.renewFakeOrderBook()
         runner = self.createRunner()
         await runner.setup()
         site = web.TCPSite(runner, host, port)
         await asyncio.gather(
-            self.webSocketSenderLoop(),
-            site.start())
+            site.start(),
+            self.webSocketSenderLoop())
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OrderBookSimulator")
-    parser.add_argument("--host", type=str, default="127.0.0.1",
+    parser.add_argument("--host", type=str, default="0.0.0.0",
                         help="webserver listening host")
     parser.add_argument("--port", type=int, default=40000,
                         help="webserver listening port")
+    parser.add_argument("--passive", type=bool, default=False,
+                        help="A passive simulator only acts via web api")
+    parser.add_argument('--log-level', default='INFO',
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+                        help='Set the logging level.')
     args = parser.parse_args()
+    logging_level = getattr(logging, args.log_level.upper())
+    logging.basicConfig(
+        level=logging_level,
+        format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
+    )
+    aiohttp_logger = logging.getLogger("aiohttp")
+    aiohttp_logger.setLevel(logging_level)
 
+    logging.info(f"args: {args}")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    orderBookSimulator = OrderBookSimulator()
+    orderBookSimulator = OrderBookSimulator(loop)
     loop.run_until_complete(
-        orderBookSimulator.startServer(args.host, args.port))
+        orderBookSimulator.startServer(args.host, args.port, args.passive))
     loop.run_forever()

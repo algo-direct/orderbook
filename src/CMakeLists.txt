@@ -20,4 +20,4 @@ target_link_libraries(OrderBook PRIVATE
     boost_http_server
 )
 
-add_dependencies(OrderBook order_booker_web_content)
+add_dependencies(OrderBook order_booker_web_content integration_tests simulator)
