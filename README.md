@@ -14,8 +14,13 @@
 # How to run intergration tests
 `docker compose run --rm intergration_tests`
 
-# How to run build
+# How to build
 `docker compose build`
+
+# How to run
+`docker compose up`
+
+It will run the Simulator and OrderBook, live book is visible at localhost:48022
 
 # How to edit code in `vscode`
 * Clone git repo
@@ -23,3 +28,4 @@
 * Press `Ctrl + Shift + P` and then type `dev open` and choose `Dev Containers: Open Folder in Container...`
     * <img src="order_booker_web_content/img/open_in_dev_c.png" width="600"/>
 * VS Code will open in a docker container and code can be built or edited in-place
+
