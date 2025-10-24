@@ -34,12 +34,15 @@ def step_impl(context, bidOrAsk, price):
     isBid = bidOrAsk.upper() == "BID"
     context.simulators["main"].removeLevel(isBid, price)
 
-
 @step('Simulator sends incremental update to Order Book')
 def step_impl(context):
     context.simulators["main"].sendIncrementalUpdate()
 
-@step('Simulator process any pending snapshot request')
+@step("Simulator disconnect Order Book's websocket connection")
+def step_impl(context):
+    context.simulators["main"].disconnectWebSocket()
+
+@step('Simulator process any pending snapshot request from Order Book')
 def step_impl(context):
     result = context.simulators["main"].processPendingSnapshotRequests()
     logging.debug(f"result: {result}")
@@ -54,6 +57,10 @@ def step_impl(context, sequenceNumber):
     result = context.orderbooks["main"].waitForSequenceNumber(sequenceNumber)
     actualSequenceNumber = context.orderbooks["main"].snapshot["sequence"]
     assert result, f"Was expecting sequence number {sequenceNumber}, but got {actualSequenceNumber}"
+
+@step('Verify Order Book is connected to simulator via websocket')
+def step_impl(context):
+    context.simulators["main"].waitForOrderBookToConnectViaWebSocket()
 
 @step('{bidOrAsk} in the snapshot contains level {price} with size {size}')
 def step_impl(context, bidOrAsk, price, size):

@@ -69,6 +69,7 @@ class FakeOrderBook:
         return update
 
     def addLevel(self, data):
+        logging.debug(f"data: {data}")
         isBid = data["isBid"].lower() == "true"
         price = float(data["price"])
         size = int(data["size"])
@@ -76,6 +77,7 @@ class FakeOrderBook:
         updatedLevels = self.updatedBids if isBid else self.updatedAsks
         tmpLevels = []
         tmpLevels.extend(levels)
+        logging.debug(f"before levels: {levels}")
         levels.clear()
         added = False
         for priceAndSize in tmpLevels:
@@ -95,17 +97,24 @@ class FakeOrderBook:
                 added = True
             else:
                 levels.append(priceAndSize)
-        if added:
-            self.timestamp = data.get("timestamp", getMillisecondsSinceEpoch())
+        if not added:
+            levels.append([price, size])
+            self.sequence += 1
+            updatedLevels.append([str(price), str(size), str(self.sequence)])
+            added = True
+        self.timestamp = data.get("timestamp", getMillisecondsSinceEpoch())
+        logging.debug(f"after levels: {levels}")
         return added
 
     def removeLevel(self, data):
+        logging.debug(f"data: {data}")
         isBid = data["isBid"].lower() == "true"
         price = float(data["price"])
         levels = self.bids if isBid else self.asks
         updatedLevels = self.updatedBids if isBid else self.updatedAsks
         tmpLevels = []
         tmpLevels.extend(levels)
+        logging.debug(f"before levels: {levels}")
         levels.clear()
         removed = False
         for priceAndSize in tmpLevels:
@@ -119,6 +128,7 @@ class FakeOrderBook:
                 removed = True
             else:
                 levels.append(priceAndSize)
+        logging.debug(f"after levels: {levels}")
         return removed
     
     def generateFirstRandomSnapshot(self):
@@ -404,7 +414,8 @@ class OrderBookSimulator:
         await self.disconnectWsImpl()
         self.webSocket = None
         self.fakeOrderBook = FakeOrderBook()
-        self.fakeOrderBook.generateFirstRandomSnapshot()
+        if not self.passive:
+            self.fakeOrderBook.generateFirstRandomSnapshot()
         self.lastIncrementalUpdates = []
         logging.info("renewed FakeOrderBook")
 
@@ -432,18 +443,34 @@ class OrderBookSimulator:
     async def disconnectWsImpl(self):
         try:
             if None != self.webSocket:
+                webSocket = self.webSocket
+                self.webSocket = None
                 logging.debug("disconnecting websocket")
-                await self.webSocket.close()
+                await webSocket.close()
+                logging.debug("disconnected websocket")
                 return True
         except Exception as ex:
             logging.exception(f"Exception: {ex}")
-        finally:
-            return False
+        return False
     
     async def disconnectWs(self, request):
         result = await self.disconnectWsImpl()
         return web.json_response({
             "wasConnected" : result
+        })
+
+    async def webSocketCount(self, request):
+        result = "0"
+        if None != self.webSocket:
+            result = "1"
+        return web.json_response({
+            "count" : result
+        })
+
+    async def clearPendingIncrementalUpdates(self, request):
+        self.fakeOrderBook.resetIncrementalData()
+        return web.json_response({
+            "sequence": str(self.fakeOrderBook.sequence)
         })
     
     async def processPendingSnapshotRequests(self, request):
@@ -477,10 +504,12 @@ class OrderBookSimulator:
         if self.passive:
             signal = asyncio.Event()
             self.pendingSnapshotRequestSignals.put(signal)
+            snapshot = self.fakeOrderBook.getSnapshot()
             await signal.wait()
+            return web.json_response(snapshot)
         else:
             await asyncio.sleep(1)
-        return web.json_response(self.fakeOrderBook.getSnapshot())
+            return web.json_response(self.fakeOrderBook.getSnapshot())
 
     async def setSnapshot(self, request):
         if not self.passive:
@@ -591,6 +620,8 @@ class OrderBookSimulator:
             web.get('/generateIncrement',   self.generateIncrementHandler),
             web.get('/ws', self.websocketHandler),
             web.get('/disconnectWs', self.disconnectWs),
+            web.get('/webSocketCount', self.webSocketCount),
+            web.get('/clearPendingIncrementalUpdates', self.clearPendingIncrementalUpdates),
             web.get('/processPendingSnapshotRequests', self.processPendingSnapshotRequests),
             web.get('/sendIncrementalUpdate', self.sendIncrementalUpdate),
         ])

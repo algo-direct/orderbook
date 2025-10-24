@@ -16,13 +16,19 @@ class OrderBook:
         args += ['--port', str(simulatorPort)]
         args += ['--http_server_host', str(self.m_httpServerHost)]
         args += ['--http_server_port', str(httpServerPort)]
+        args += ['--reconnect_delay', '200']
         cmd = [os.getenv("BUILD_DIR", "") + "/src/OrderBook"] + args
         logging.debug(f"Running command: {cmd}")
-        logfile = open("/tmp/orderbook.log", "wb")
-        self.process = subprocess.Popen(cmd, stdout=logfile, stderr=logfile)
+        loggingLevel = logging.getLevelName(logging.getLogger().getEffectiveLevel())
+        if loggingLevel == "DEBUG" or loggingLevel == "TRACE":
+            self.process = subprocess.Popen(cmd)
+        else:
+            logfile = open("/tmp/orderbook.log", "wb")
+            self.process = subprocess.Popen(cmd, stdout=logfile, stderr=logfile)
 
     def terminate(self):
         self.process.terminate()
+        self.process.wait()
  
     def waitForRunningState(self):
         withRetry = True

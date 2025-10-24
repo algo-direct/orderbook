@@ -20,18 +20,18 @@
 	
 	// Configure tool-specific properties.
 	"customizations": {
-		"extensions": [
-			"ms-vscode.cpptools",
-			"ms-vscode.cmake-tools",
-			"llvm-vs-code-extensions.vscode-clangd",
-			"ms-azuretools.vscode-containers"
-		],
 		"settings": {
 			"terminal.integrated.defaultProfile.linux": "bash"
 		},
 		"vscode": {
 			"extensions": [
-				"ms-python.python"
+				"ms-python.python",
+				"ms-vscode.cpptools",
+				"ms-vscode.cmake-tools",
+				"llvm-vs-code-extensions.vscode-clangd",
+				"ms-azuretools.vscode-containers",
+				"github.vscode-github-actions",
+				"cucumberopen.cucumber-official"
 			]
 		}
 	}

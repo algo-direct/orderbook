@@ -3,25 +3,34 @@ import aiohttp
 import asyncio
 from functools import partial
 
-def httpGet(host, port, uri, withRetry=False):
+def httpGet(host, port, uri, withRetry=False, predicate=None):
     url = f"http://{host}:{port}{uri}"
     fx = partial(_httpGet, url) 
     if withRetry:
-        return asyncio.run(callWithRetry(fx, url))
+        return asyncio.run(callWithRetry(fx, url, predicate))
     return asyncio.run(fx())
 
-def httpPost(host, port, uri, payload, withRetry=False):
+def httpPost(host, port, uri, payload, withRetry=False, predicate=None):
     url = f"http://{host}:{port}{uri}"
     fx = partial(_httpPost, url, payload) 
     if withRetry:
-        return asyncio.run(callWithRetry(fx, url))
+        return asyncio.run(callWithRetry(fx, url, predicate))
     return asyncio.run(fx())
 
-async def callWithRetry(fx, url, retries=50, delay=0.1):
+async def callWithRetry(fx, url, predicate = None, retries=50, delay=0.1):
     for attempt in range(retries):
         try:
-            return await fx()
-        except (aiohttp.ClientConnectorError, asyncio.TimeoutError, aiohttp.ServerDisconnectedError) as e:
+            if predicate:
+                result = await fx()
+                logging.debug(f"result: {result}")
+                predicateOutput = predicate(result)
+                logging.debug(f"predicateOutput: {predicateOutput}")
+                if not predicateOutput:
+                    raise RuntimeError("Predicate failed.")
+                return result
+            else:
+                return await fx()
+        except (RuntimeError, aiohttp.ClientConnectorError, asyncio.TimeoutError, aiohttp.ServerDisconnectedError) as e:
             logging.debug(f"Attempt {attempt + 1} failed for {url}: {e}")
             if attempt < retries - 1:
                 logging.debug(f"Retrying in {delay} seconds...")

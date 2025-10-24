@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const obBids = document.getElementsByClassName('ob-side-bids')[0];
     const obAsks = document.getElementsByClassName('ob-side-asks')[0];
+    const dateTimeHeading = document.getElementsByClassName('date-time')[0];
 
     function populateGridUsingSnapshot(snapshot) {
         const populateLevels = (title, div, levels) => {
@@ -38,6 +39,17 @@ document.addEventListener('DOMContentLoaded', function () {
         };
         populateLevels('Bids', obBids, snapshot.bids);
         populateLevels('Asks', obAsks, snapshot.asks);
+        const dateTime = (new Date(parseInt(parseInt(snapshot.time))))
+            .toLocaleString('en-US', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                fractionalSecondDigits: 3
+            });
+        dateTimeHeading.innerHTML = dateTime;
     }
 
 
